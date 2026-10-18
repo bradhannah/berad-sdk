@@ -1,9 +1,11 @@
 # Validation and avoiding repeated work
 
-## Actual foundation coverage
+## Checker and registered-module coverage
 
-Requires Python 3.10+. No Go toolchain, original game data, graphics/audio device,
-private service, Node, or network access is needed. From the repository:
+The checker requires Python 3.10+. Registered Go modules additionally need their
+declared toolchain, cached dependencies, and a C compiler for race instrumentation.
+Original game data, a native audio device, private service, Node and network are
+not required. From the repository:
 
 ```sh
 python3 -I -B scripts/check.py plan
@@ -12,17 +14,38 @@ python3 -I -B scripts/check.py quality-gate
 ```
 
 Make offers the same three targets. `validate` and `quality-gate` currently cover
-the same two foundation checks:
+the checker contracts and registered module lanes:
 
 | Check | Inputs and execution |
 | --- | --- |
 | contracts | Always runs the cheap manifest/module-inventory, required-file, Markdown link/catalog, skill, and source-path checks |
 | checker-tests | Runs stdlib regression tests for the checker; reuses success when scripts/tests, Makefile, manifest, Python runtime identity, and relevant environment match |
+| module unit | Isolated dependency-closure check, zero-skip tests, vet and build; reusable per registered module |
+| module race | Separate race-instrumented module tests; does not repeat vet/build |
+| module consumer | Copied public-API consumer using only a validated temporary module substitution; ordinary and race tests |
 
 `plan` reports intended work and does not execute tests or create cache files.
 Each final run reports executed/reused checks and elapsed time. Documentation edits
 do not invalidate checker regression evidence. Checker/test/configuration changes do.
 An unknown active module or Go source fails until its real validation is registered.
+The current runtime inventory is Berad Audio; it transfers the consumer's API
+scenarios, with only the canonical import path changed. Redux bridge checks remain
+game-owned and are not dependencies of independent SDK validation.
+
+Each module lane binds module files/modes, locks, checker policy, Python runtime,
+Go environment/toolchain implementation, compiler identity and lane selection.
+The consumer lane additionally binds its fixture; changes only to that fixture
+retain SDK unit/race proof. Another module's source does not invalidate this
+module; shared checker/manifest/tool changes do. Dependencies are provisioned
+caches checked through `go.mod`/`go.sum`, not rehashed cache directories.
+Checks disable workspaces/network and reject module replacements, game imports,
+unregistered nested modules and GOFLAGS overrides. Embedded assets require
+extending dependency selection before adding `go:embed`. Only the module root
+README/LICENSE are excluded from expensive lane fingerprints; cheap contracts
+still inspect them every time. Other module assets remain inputs.
+Each lane has a nonblocking exclusive lock, invalidates stale proof before execution,
+and rechecks inputs before recording success. `plan` explains run/reuse without
+creating results. Native listening is not part of controlled-transport lanes.
 
 Local regression results live under ignored `.cache/validation/`. They are an
 optimization, not signed evidence or a publication authorization. A process lock
@@ -92,6 +115,8 @@ Before a runtime module is accepted here, demonstrate:
 7. The plan explains every selection and reports actual execution/reuse.
 8. Independent consumer builds work without a workspace masking dependencies.
 
-These are onboarding requirements. The foundation implements and tests reuse for
-its checker regressions only; a generalized Go-module/consumer scheduler will be
-registered with the first real modules and their actual dependency graphs.
+These are onboarding requirements. Checker regressions cover module/consumer input
+separation, unrelated-module/prose reuse, dependency/tool invalidation, concurrency,
+failed/malformed/changing results and zero-skip package proof. Extend this graph for
+new module capabilities (such as generated/embedded assets or native rendering)
+instead of claiming audio lanes establish those properties.

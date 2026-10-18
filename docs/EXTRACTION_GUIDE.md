@@ -51,7 +51,7 @@ the contract. A new ownership/failure boundary does need appropriate evidence.
 
 ## 4. Register validation before onboarding code here
 
-This repository currently has a foundation-only gate. Adding a `go.mod` or Go
+This repository registers module lanes explicitly. Adding a `go.mod` or Go
 implementation requires extending `sdk.json` and its validator together with an
 explicit check graph, dependencies, tools, and consumer fixtures. The initial gate
 deliberately rejects unsupported code rather than reporting a false full pass.

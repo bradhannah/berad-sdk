@@ -1,19 +1,19 @@
 # Module catalog
 
-There are no active runtime modules in this repository yet. `sdk.json` records the
-empty active inventory; foundation checks reject unregistered Go modules/code.
+`sdk.json` registers modules and their actual validation lanes. Unregistered Go
+modules/code are rejected; the catalog is not a publication/version promise.
 
 The intended identities are:
 
 | Proposed directory | Intended responsibility | Current availability here |
 | --- | --- | --- |
-| `berad-audio/` | Reusable audio runtime and authoring services | Not available |
+| [`berad-audio/`](berad-audio/README.md) | Cue/voice runtime, finite music and ambient reconciliation | Experimental source on `feat/berad-audio`; authoring/TUI extraction remains in progress |
 | `berad-text/` | Text resources, layout, rendering, and geometry | Not available |
 | `berad-graphics/` | A reviewed set of reusable graphics services | Not available; boundary requires design |
 
-Future module paths follow
-`github.com/bradhannah/berad-sdk/modules/berad-<domain>`. These are naming
-conventions, not resolvable installation instructions today. A future tile library
+Module paths follow `github.com/bradhannah/berad-sdk/modules/berad-<domain>`.
+For audio, pin a reviewed published revision from its development branch. Planned
+text/graphics identities are not installable packages. A future tile library
 is a separate design decision.
 
 Each module will have its own `go.mod`, license notices, documented public API,

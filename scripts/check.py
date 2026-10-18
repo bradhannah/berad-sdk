@@ -2,6 +2,7 @@
 """Offline foundation checks; runtime module onboarding must extend this policy."""
 
 import argparse
+import importlib.util
 import hashlib
 import json
 import os
@@ -16,6 +17,9 @@ import time
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("module_checks", ROOT / "scripts/module_checks.py")
+MODULE_CHECKS = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE_CHECKS)
 IGNORED = {".git", ".cache", "__pycache__"}
 REQUIRED = (
     "README.md", "LICENSE", "AGENTS.md", "CONTRIBUTING.md", "Makefile", "sdk.json",
@@ -50,11 +54,7 @@ def contracts(root):
         if not (root / name).is_file():
             raise ValueError(f"missing required file: {name}")
     manifest = json.loads((root / "sdk.json").read_text())
-    if manifest != {"schema_version": 1, "stage": "foundation", "modules": []}:
-        raise ValueError("register module validation before changing the foundation inventory")
-    for path in paths:
-        if path.name in {"go.mod", "go.work"} or path.suffix == ".go":
-            raise ValueError(f"unregistered runtime code/module: {path.relative_to(root)}")
+    modules = MODULE_CHECKS.inventory(root, manifest, paths)
     markdown = [path for path in paths if path.suffix == ".md"]
     for path in markdown:
         text = path.read_text(encoding="utf-8")
@@ -78,6 +78,7 @@ def contracts(root):
         raise ValueError("invalid public SDK skill identity/description")
     if "MIT License" not in (root / "LICENSE").read_text():
         raise ValueError("missing MIT license")
+    return modules
 
 
 def fingerprint(root):
@@ -146,18 +147,21 @@ def main():
     args = parser.parse_args()
     start = time.monotonic()
     try:
-        contracts(ROOT)
+        modules = contracts(ROOT)
         print("contracts: PASS (cheap manifest, inventory, links, catalog, skill and source-path checks)")
         cache = ROOT / ".cache/validation"
         if args.operation == "plan":
             action = "REUSE" if reusable(cache / "checker-tests.json", fingerprint(ROOT)) else "RUN"
             print(f"checker-tests: {action} (matching material-input evidence required)")
-            print("runtime/native/consumer suites: NOT REGISTERED (foundation stage)")
+            MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT), plan=True)
+            if not modules:
+                print("runtime/native/consumer suites: NOT REGISTERED (foundation stage)")
         else:
             regression_tests(ROOT, cache)
-            print(f"Foundation {args.operation}: PASS; elapsed={time.monotonic() - start:.2f}s")
+            MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT))
+            print(f"SDK {args.operation}: PASS; elapsed={time.monotonic() - start:.2f}s")
         return 0
-    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(f"Foundation check failed: {error}", file=sys.stderr)
         return 1
 

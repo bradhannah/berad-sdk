@@ -1,5 +1,7 @@
 {
   "schema_version": 1,
-  "stage": "foundation",
-  "modules": []
+  "stage": "runtime",
+  "modules": [
+    {"name": "berad-audio", "checks": ["unit", "race", "consumer"]}
+  ]
 }

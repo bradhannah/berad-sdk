@@ -9,10 +9,11 @@ assets retain their own terms; see [licensing](docs/LICENSING.md).
 
 ## Current availability
 
-This repository is at the **foundation stage**: engineering contracts, conversion
-guidance, templates, an OpenCode skill, and lightweight validation are available.
-There are **no installable runtime modules or SDK version releases here yet**.
-Audio, text, and graphics are planned module identities, not available packages.
+Engineering contracts, conversion guidance, templates and an OpenCode skill are
+available. **Berad Audio** provides an experimental runtime with explicit
+module/consumer checks on the `feat/berad-audio` development branch. Consumers
+must pin a remotely available reviewed revision; there are no stable SDK version
+releases. Text and graphics remain planned identities.
 See the [module catalog](modules/README.md).
 
 ## Converting an existing subsystem?
@@ -41,9 +42,10 @@ No private checkout, service, or original game installation is required.
 - Validate affected work and reuse valid results instead of rerunning everything.
 - Coordinate consumer upgrades; keep long-term version freezes an explicit last resort.
 
-## Validate this foundation
+## Validate registered work
 
-Requires Python 3.10 or newer. Make is a convenience, not a requirement:
+Requires Python 3.10 or newer; runtime lanes also require their declared Go
+toolchain and provisioned dependencies. Make is a convenience:
 
 ```sh
 python3 -I -B scripts/check.py plan
@@ -51,8 +53,8 @@ python3 -I -B scripts/check.py validate
 ```
 
 Equivalent Make targets are `make plan`, `make validate`, and `make quality-gate`.
-Checks are local and offline. Foundation regression tests reuse a successful local
-result when their inputs match; documentation checks remain inexpensive and run
+Checks are local and offline. Checker and registered module lanes reuse successful
+results when their inputs match; documentation checks remain inexpensive and run
 every time. See [validation](docs/VALIDATION.md) for exact coverage and limitations.
 
 Read the [documentation catalog](docs/README.md) and

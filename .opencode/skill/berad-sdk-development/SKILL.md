@@ -40,11 +40,11 @@ Resolve links from this skill directory, not the current consumer working direct
    diff and every required delivery. Report native observations and limitations
    honestly. Humans merge.
 
-## Foundation commands
+## Registered validation commands
 
 From the SDK checkout, use `python3 -I -B scripts/check.py plan`, then `validate`
-or `quality-gate`. These currently validate the foundation, not runtime modules.
-The guide defines how actual module checks must be added.
+or `quality-gate`. Read `sdk.json` and the validation contract for actual registered
+coverage and reuse. Add required module checks before claiming onboarding acceptance.
 
 Consumer-specific workflows may add their own repository coordination and evidence
 requirements. This skill does not grant publication, filesystem, or remote-state
