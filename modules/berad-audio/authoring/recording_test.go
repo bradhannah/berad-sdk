@@ -251,3 +251,51 @@ func TestCalibrationConstrainsRareSamplePeak(t *testing.T) {
 		t.Fatalf("sample peak ceiling not applied: %+v %v", value, err)
 	}
 }
+
+func TestAuthoringStreamGainPreservesSnapshotAndOddReadSeek(t *testing.T) {
+	path, _ := sourceFixture(t, 100)
+	clip, err := authoring.LoadRecording(path, ebitengine.Decode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peaks := clip.Peaks()
+	stream, err := clip.Stream(&authoring.PlaybackWindow{StartMs: 20, EndMs: 60}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if err := stream.SetGain(20); err != nil {
+		t.Fatal(err)
+	}
+	var odd []byte
+	for {
+		buffer := make([]byte, 3)
+		count, err := stream.Read(buffer)
+		odd = append(odd, buffer[:count]...)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := stream.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	again, err := io.ReadAll(stream)
+	if err != nil || !bytes.Equal(odd, again) {
+		t.Fatal("gain changed with buffer size or seek", err)
+	}
+	for offset := 2; offset < len(odd); offset += 4 {
+		sample := int16(binary.LittleEndian.Uint16(odd[offset:]))
+		if sample != 32767 && sample != -32768 {
+			t.Fatalf("unsaturated sample %d", sample)
+		}
+	}
+	if err := stream.SetGain(math.NaN()); !errors.Is(err, authoring.ErrLibrary) {
+		t.Fatal(err)
+	}
+	if len(peaks) != len(clip.Peaks()) || peaks[2] != clip.Peaks()[2] {
+		t.Fatal("audition gain mutated source analysis")
+	}
+}

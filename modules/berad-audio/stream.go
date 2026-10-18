@@ -3,7 +3,6 @@ package audio
 // Adapted from Redux's recording_stream, gain_player and runtime_stream. Keep
 // source ownership through windows/loops and the retirement read barrier.
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -54,11 +53,18 @@ type readFailure struct{ err error }
 
 // pcmBoundary is read/seek serialized by the backend; gain/failure are concurrent.
 type pcmBoundary struct {
-	source          *section
-	gain            atomic.Uint64
-	failure         atomic.Pointer[readFailure]
-	buffer, pending []byte
-	pendingErr      error
+	source  *section
+	gain    atomic.Uint64
+	failure atomic.Pointer[readFailure]
+	filter  *pcm.Gain
+}
+
+func newPCMBoundary(source *section) *pcmBoundary {
+	stream := new(pcmBoundary)
+	stream.source = source
+	stream.gain.Store(math.Float64bits(1))
+	stream.filter = pcm.NewGain(source, &stream.gain, ErrInvalidLibrary)
+	return stream
 }
 
 func (stream *pcmBoundary) Failure() error {
@@ -73,7 +79,7 @@ func (stream *pcmBoundary) Read(buffer []byte) (int, error) {
 	if stream.Failure() != nil {
 		return 0, io.EOF
 	}
-	count, err := stream.readPCM(buffer)
+	count, err := stream.filter.Read(buffer)
 	if err != nil && !errors.Is(err, io.EOF) {
 		stream.failure.CompareAndSwap(nil, &readFailure{err: fmt.Errorf("read audio: %w", err)})
 
@@ -83,67 +89,17 @@ func (stream *pcmBoundary) Read(buffer []byte) (int, error) {
 	return count, err
 }
 
-func (stream *pcmBoundary) readPCM(buffer []byte) (int, error) {
-	written := copy(buffer, stream.pending)
-	stream.pending = stream.pending[written:]
-	if len(stream.pending) == 0 && stream.pendingErr != nil {
-		err := stream.pendingErr
-		stream.pendingErr = nil
-
-		return written, err
-	}
-	if written == len(buffer) {
-		return written, nil
-	}
-	const sampleBytes = 2
-	wanted := (len(buffer) - written + sampleBytes - 1) / sampleBytes * sampleBytes
-	if cap(stream.buffer) < wanted {
-		stream.buffer = make([]byte, wanted)
-	}
-	pcm := stream.buffer[:wanted]
-	count, err := readPCM(stream.source, pcm)
-	if count%sampleBytes != 0 {
-		return written, fmt.Errorf("%w: partial PCM sample", ErrInvalidLibrary)
-	}
-	const signedScale, maxSample = 32768, 32767
-	gain := math.Float64frombits(stream.gain.Load())
-	for offset := 0; gain != 1 && offset < count; offset += sampleBytes {
-		//nolint:gosec // Bit-preserving signed PCM reinterpretation.
-		sample := int16(binary.LittleEndian.Uint16(pcm[offset:]))
-		value := math.Max(-signedScale, math.Min(maxSample, math.Round(float64(sample)*gain)))
-		//nolint:gosec // Saturated signed PCM stored as unsigned sample bits.
-		binary.LittleEndian.PutUint16(pcm[offset:], uint16(int16(value)))
-	}
-	copied := copy(buffer[written:], pcm[:count])
-	stream.pending = pcm[copied:count]
-	if len(stream.pending) > 0 {
-		stream.pendingErr, err = err, nil
-	}
-
-	return written + copied, err
-}
-
 func (stream *pcmBoundary) Seek(offset int64, whence int) (int64, error) {
 	if err := stream.Failure(); err != nil {
 		return 0, err
 	}
-	if whence == io.SeekCurrent {
-		offset -= int64(len(stream.pending))
-	}
-	position, err := stream.source.Seek(offset, whence)
+	position, err := stream.filter.Seek(offset, whence)
 	if err != nil {
 		stream.failure.CompareAndSwap(nil, &readFailure{err: fmt.Errorf("seek audio: %w", err)})
 
 		return position, err
 	}
-	stream.pending, stream.pendingErr = nil, nil
-
 	return position, nil
-}
-
-//nolint:wrapcheck // Preserve one-time decoder errors, including errors with a full buffer.
-func readPCM(source io.Reader, buffer []byte) (int, error) {
-	return pcm.Read(source, buffer, ErrInvalidLibrary)
 }
 
 func closeSource(source PCMStream) error {

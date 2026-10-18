@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync/atomic"
 
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio"
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/internal/pcm"
@@ -33,6 +34,8 @@ type PlaybackWindow struct {
 type Stream struct {
 	section *pcm.Section
 	source  audio.PCMStream
+	gain    atomic.Uint64
+	filter  *pcm.Gain
 }
 
 // Stream decodes frozen bytes using the runtime's shared window/loop mechanism.
@@ -70,21 +73,24 @@ func decodeRecording(data []byte, path string, decode audio.Decoder, window *Pla
 	if err != nil {
 		return nil, errors.Join(err, closeDecoded(source))
 	}
-	return &Stream{section: selected, source: source}, nil
+	stream := &Stream{section: selected, source: source}
+	stream.gain.Store(math.Float64bits(1))
+	stream.filter = pcm.NewGain(selected, &stream.gain, ErrLibrary)
+	return stream, nil
 }
 
 func (stream *Stream) Read(buffer []byte) (int, error) {
 	if stream.source == nil {
 		return 0, ErrStreamClosed
 	}
-	return stream.section.Read(buffer)
+	return stream.filter.Read(buffer)
 }
 
 func (stream *Stream) Seek(offset int64, whence int) (int64, error) {
 	if stream.source == nil {
 		return 0, ErrStreamClosed
 	}
-	return stream.section.Seek(offset, whence)
+	return stream.filter.Seek(offset, whence)
 }
 
 // Length reports selected PCM bytes while live; retired streams report zero.
@@ -97,8 +103,22 @@ func (stream *Stream) Length() int64 {
 
 func (stream *Stream) Close() error {
 	err := closeDecoded(stream.source)
-	stream.source, stream.section = nil, nil
+	stream.source, stream.section, stream.filter = nil, nil, nil
 	return err
+}
+
+// SetGain changes linear PCM gain without restarting, using the runtime's shared
+// saturation/odd-read mechanism. Values must be finite and nonnegative. It is safe
+// alongside Read; serialize it with Close. Metadata and analysis remain unchanged.
+func (stream *Stream) SetGain(gain float64) error {
+	if stream.source == nil {
+		return ErrStreamClosed
+	}
+	if math.IsNaN(gain) || math.IsInf(gain, 0) || gain < 0 {
+		return fmt.Errorf("%w: finite nonnegative stream gain required", ErrLibrary)
+	}
+	stream.gain.Store(math.Float64bits(gain))
+	return nil
 }
 
 func closeDecoded(source audio.PCMStream) error {

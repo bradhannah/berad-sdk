@@ -173,6 +173,11 @@ document/project layer, not this source-file API.
   EOF; closure is terminal/idempotent and does not retire other streams or the
   immutable source. The caller serializes Read/Seek/Close and stops native reads
   before closing. Preparation failure closes its decoder too.
+- `Stream.SetGain` applies finite nonnegative linear PCM gain without restarting,
+  sharing the runtime's saturation and odd-read/seek handling. It can run alongside
+  Read, but control callers serialize it with Close. It does not change cached
+  waveform/calibration data or author metadata; queued sample bytes keep their
+  already-applied gain. This is not sample-accurate mixing or a master limiter.
 
 Immutable source methods can be called concurrently if the supplied decoder itself
 supports independent concurrent calls. Stream operations remain caller-serialized.

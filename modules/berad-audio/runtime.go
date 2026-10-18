@@ -256,9 +256,7 @@ func (runtime *Runtime) prepare(recording Recording, loop bool) (*voice, error) 
 	if err != nil {
 		return nil, errors.Join(err, closeSource(source))
 	}
-	stream := new(pcmBoundary)
-	stream.source = selected
-	stream.gain.Store(math.Float64bits(1))
+	stream := newPCMBoundary(selected)
 	device, err := runtime.options.Backend.NewPlayer(stream)
 	if err != nil || device == nil {
 		if device != nil {
