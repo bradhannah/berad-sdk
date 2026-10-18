@@ -2,7 +2,7 @@ PYTHON ?= python3
 MODULE ?=
 SELECT_MODULE = $(if $(MODULE),--module $(MODULE),)
 
-.PHONY: plan validate quality-gate provision audio-runtime-check audio-tools-check clean
+.PHONY: plan validate quality-gate provision audio-runtime-check audio-tools-check audio-tools clean
 
 plan:
 	$(PYTHON) -I -B scripts/check.py plan $(SELECT_MODULE)
@@ -21,6 +21,9 @@ audio-runtime-check:
 
 audio-tools-check:
 	$(PYTHON) -I -B scripts/check.py quality-gate --module tools/berad-audio
+
+audio-tools:
+	$(MAKE) -C tools/berad-audio build
 
 # Only SDK-owned generated executables; retain validation proof and authored files.
 clean:
