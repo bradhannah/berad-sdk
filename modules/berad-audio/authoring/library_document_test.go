@@ -161,3 +161,21 @@ func TestConsumerImportPolicyIsDetachedAndCannotEscapeAssetRoot(t *testing.T) {
 	require.True(t, reopened.Undo())
 	require.FileExists(t, reopened.RetainedImports()[0].Path)
 }
+
+func TestCalibrationPolicyInspectionUsesAuthoredOverrideWithoutMutation(t *testing.T) {
+	editor, _ := editorFixture(t)
+	options, err := editor.CalibrationOptionsFor("healing_01")
+	require.NoError(t, err)
+	require.Equal(t, DefaultCalibrationOptions(), options)
+	recording := editor.Recording("healing_01")
+	target := -24.0
+	recording.CalibrationTargetDB = &target
+	require.NoError(t, editor.SetRecording("healing_01", recording))
+	options, err = editor.CalibrationOptionsFor("healing_01")
+	require.NoError(t, err)
+	require.Equal(t, target, options.TargetDB)
+	options.TargetDB = 0
+	require.Equal(t, target, *editor.Recording("healing_01").CalibrationTargetDB)
+	_, err = editor.CalibrationOptionsFor("unknown")
+	require.ErrorIs(t, err, ErrLibrary)
+}

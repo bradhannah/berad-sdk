@@ -185,7 +185,9 @@ supports independent concurrent calls. Stream operations remain caller-serialize
 explicit decoder and calibration callbacks. Optional consumer validation receives
 detached metadata; it owns completeness, vocabulary and target eligibility.
 `DefaultEditorOptions` supplies the generic active-RMS policy for a given decoder;
-games supply their family-specific targets explicitly. Asset
+games supply their family-specific targets explicitly.
+`CalibrationOptionsFor` lets frontends inspect the actual effective policy and
+authored override without maintaining another set of calibration defaults. Asset
 roots resolve against the manifest directory, not the process directory. Imports
 default to `imported/`; a project can supply its own relative destination policy
 and existing-path eligibility. These are trusted local-project filesystem rules,

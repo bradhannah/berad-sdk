@@ -43,3 +43,13 @@ func (e *LibraryEditor) calibrationOptions(family string, override *float64) Cal
 	}
 	return options
 }
+
+// CalibrationOptionsFor returns the project's actual measurement policy and
+// authored target override for a recording, so frontends need no second policy.
+func (e *LibraryEditor) CalibrationOptionsFor(recordingID string) (CalibrationOptions, error) {
+	recording, exists := e.library.Recordings[recordingID]
+	if !exists {
+		return CalibrationOptions{}, fmt.Errorf("%w: unknown recording %s", ErrLibrary, recordingID)
+	}
+	return e.calibrationOptions(e.RecordingFamily(recordingID), recording.CalibrationTargetDB), nil
+}
