@@ -1,10 +1,29 @@
-.PHONY: plan validate quality-gate
+PYTHON ?= python3
+MODULE ?=
+SELECT_MODULE = $(if $(MODULE),--module $(MODULE),)
+
+.PHONY: plan validate quality-gate provision audio-runtime-check audio-tools-check clean
 
 plan:
-	python3 -I -B scripts/check.py plan
+	$(PYTHON) -I -B scripts/check.py plan $(SELECT_MODULE)
 
 validate:
-	python3 -I -B scripts/check.py validate
+	$(PYTHON) -I -B scripts/check.py validate $(SELECT_MODULE)
 
 quality-gate:
-	python3 -I -B scripts/check.py quality-gate
+	$(PYTHON) -I -B scripts/check.py quality-gate $(SELECT_MODULE)
+
+provision:
+	$(PYTHON) -I -B scripts/check.py provision $(SELECT_MODULE)
+
+audio-runtime-check:
+	$(PYTHON) -I -B scripts/check.py quality-gate --module modules/berad-audio
+
+audio-tools-check:
+	$(PYTHON) -I -B scripts/check.py quality-gate --module tools/berad-audio
+
+# Only SDK-owned generated executables; retain validation proof and authored files.
+clean:
+	rm -f .cache/bin/audio-editor .cache/bin/audio-editor.exe
+	rm -f .cache/bin/audio-catalog .cache/bin/audio-catalog.exe
+	rm -f .cache/bin/audio-probe .cache/bin/audio-probe.exe

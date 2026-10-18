@@ -7,7 +7,9 @@ are canonical, so the skill is not a second copy of the rules.
 
 ## Boundaries
 
-- The repository contains independently versioned modules under `modules/berad-*`.
+- The repository contains independently versioned runtimes under `modules/berad-*`
+  and developer tools under `tools/berad-*`. Tools may consume runtimes; runtimes
+  must not depend on tools/TUI. Keep executable packages beneath each tool's `cmd/`.
   `sdk.json` is the active-module inventory. Register checks before introducing
   module code; the original empty inventory supported foundation-only validation.
 - Expose only required consumer capabilities. Prefer concrete service types with

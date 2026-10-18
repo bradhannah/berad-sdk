@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline foundation checks; runtime module onboarding must extend this policy."""
+"""Registered SDK checks and explicit, separately requested network provisioning."""
 
 import argparse
 import importlib.util
@@ -85,7 +85,7 @@ def fingerprint(root):
     """Bind regression inputs, interpreter/runtime sources, and execution context."""
     hasher = hashlib.sha256()
     paths = [p for p in files(root) if p.relative_to(root).parts[0] in {"scripts", "tests"}
-             or p.name in {"sdk.json", "Makefile"}]
+             or p.relative_to(root).as_posix() in {"sdk.json", "Makefile"}]
     for path in paths:
         hasher.update(str(path.relative_to(root)).encode())
         hasher.update(path.read_bytes())
@@ -143,23 +143,29 @@ def regression_tests(root, cache, identity_function=fingerprint, runner=subproce
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("plan", "validate", "quality-gate"))
+    parser.add_argument("operation", choices=("plan", "validate", "quality-gate", "provision"))
+    parser.add_argument("--module", action="append", default=[], help="registered identity, e.g. modules/berad-audio")
     args = parser.parse_args()
     start = time.monotonic()
     try:
         modules = contracts(ROOT)
         print("contracts: PASS (cheap manifest, inventory, links, catalog, skill and source-path checks)")
+        MODULE_CHECKS.INVENTORY.selected_jobs(modules, args.module)
+        if args.operation == "provision":
+            MODULE_CHECKS.provision(ROOT, modules, args.module)
+            return 0
         cache = ROOT / ".cache/validation"
         if args.operation == "plan":
             action = "REUSE" if reusable(cache / "checker-tests.json", fingerprint(ROOT)) else "RUN"
             print(f"checker-tests: {action} (matching material-input evidence required)")
-            MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT), plan=True)
+            MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT), plan=True, selectors=args.module)
             if not modules:
                 print("runtime/native/consumer suites: NOT REGISTERED (foundation stage)")
         else:
             regression_tests(ROOT, cache)
-            MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT))
-            print(f"SDK {args.operation}: PASS; elapsed={time.monotonic() - start:.2f}s")
+            MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT), selectors=args.module)
+            scope = ",".join(args.module) or "all registered modules"
+            print(f"SDK {args.operation}: PASS ({scope}); elapsed={time.monotonic() - start:.2f}s")
         return 0
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(f"Foundation check failed: {error}", file=sys.stderr)

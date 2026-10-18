@@ -47,6 +47,38 @@ Each lane has a nonblocking exclusive lock, invalidates stale proof before execu
 and rechecks inputs before recording success. `plan` explains run/reuse without
 creating results. Native listening is not part of controlled-transport lanes.
 
+### Runtime/tools registration and focused selection
+
+Inventory schema 2 names each module by its repository-relative identity (for
+example `modules/berad-audio` or `tools/berad-audio`), its explicit check list, and
+`requires` dependencies on other registered runtime modules. Schema 1 remains
+readable. Paths, missing/duplicate identities, cycles and runtime-to-tools
+dependencies are rejected. Registration does not imply publication or native proof.
+
+`python3 -I -B scripts/check.py quality-gate --module modules/berad-audio` selects
+that module's lanes and downstream **candidate** integration lanes. Select a tools
+identity for its published-pin and candidate lanes without rerunning upstream unit
+tests. Omit `--module` for aggregate acceptance. Make forwards `MODULE=...` to the
+same checker; unknown selections fail rather than running zero checks.
+
+Published-pin lanes resolve normal Go dependencies. A module with `requires` also
+registers a `candidate` lane: isolated copies substitute the exact declared runtime
+dependency closure, run the dependent module and its public consumer in ordinary
+and race modes, and fingerprint those actual candidate inputs. Cache/lock names
+include runtime/tools identity and lane. A candidate-runtime change invalidates
+that integration evidence without invalidating tools' published-pin evidence.
+
+Packages without test files are explicitly build-only, not missing or skipped
+tests. Listed test-bearing packages must each produce passing assertions and a
+single successful terminal event. Real test/subtest skips, failures, duplicate or
+missing package completions remain errors.
+
+`make provision` (or the checker's explicit `provision` operation) enables ordinary
+network dependency provisioning for selected modules and their isolated consumers.
+It uses the same consumer layout and creates no validation proof. Normal validation
+never provisions dependencies. Keep generated binaries under `.cache/bin` and
+preserve `.cache/validation` during ordinary tool cleanup.
+
 Local regression results live under ignored `.cache/validation/`. They are an
 optimization, not signed evidence or a publication authorization. A process lock
 prevents concurrent duplicate regression runs. A failed/interrupted attempt is not

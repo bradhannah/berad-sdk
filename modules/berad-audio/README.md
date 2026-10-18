@@ -12,7 +12,9 @@ Development source is on `feat/berad-audio`; there is no stable or tagged releas
 Use a reviewed published commit at the SDK path. Redux's dependency/import cutover
 follows an available SDK revision; no application-local replacement is required.
 Ambient and finite music transports are available; the existing Bubble Tea editor
-is not yet a module API. The API is pre-stability; applications should
+is not yet a module API. Source analysis is available in the `authoring` package;
+document editing/persistence is available there too; session/TUI extraction is ongoing.
+The API is pre-stability; applications should
 pin reviewed revisions once they are available remotely.
 
 ### SDK guidance and migration identity
@@ -35,6 +37,7 @@ and native Windows/Linux audio are not established by that evidence.
 | `audio.MusicPlayer`, `audio.AmbientController` | Finite transport and stable-source reconciliation; host retains score/world policy | Independent lane lifetimes; source/cue IDs have no implicit game semantics |
 | `backend/ebitengine.Backend.Context` (`*audio.Context` from Ebitengine) | Borrow the host's device and sample rate; host retains device lifetime | Reviewed against Ebitengine 2.10.4; do not replace the context while a lane uses it; lane closure never closes the context |
 | `backend/ebitengine.Decode` | Host-rate WAV/MP3/OGG decoding through the neutral PCM contract | Codec/version behavior is part of downstream validation; callers do not mutate retained decoder state |
+| `authoring.RecordingAudio` | Frozen encoded source, waveform/calibration estimates and source verification | Caller supplies a decoder; no native device, application logger or game vocabulary |
 
 These boundaries apply `SDK-API-001/002`, `SDK-OWN-001`, `SDK-CFG-001`,
 `SDK-RUN-001`, `SDK-LIMIT-001` and `SDK-DOM-001`. Production media remain outside
@@ -131,6 +134,92 @@ for its TUI. Do not serialize `Definition` as a replacement authoring document.
 All production recordings/notices remain game-owned. Examples/tests generate
 their PCM/WAV; no bundled game media or original installation is required.
 
+## Source-bound authoring analysis
+
+`authoring.LoadRecordingContext(ctx, path, decoder)` loads an immutable local
+source snapshot. Supply `backend/ebitengine.Decode` for the supported WAV/MP3/OGG
+codecs or another decoder satisfying the root PCM contract. No device is opened.
+The source pathname becomes absolute; relative paths are resolved by the caller's
+current directory at loading. Project-relative asset roots belong to the future
+document/project layer, not this source-file API.
+
+- Input is a regular local file, at most 128 MiB of encoded bytes. Analysis uses
+  streamed 44.1 kHz stereo signed 16-bit PCM with 10 ms waveform/energy buckets.
+  The source retains encoded data and buckets, not the whole decoded recording.
+  Each decoder receives a private copy; this input cap is not a total heap budget.
+- `Path`, `DurationMs` and `Fingerprint` are scalar observations. `Peaks` returns
+  a detached slice, while `PeakBetween` inspects inclusive source-time buckets
+  without exposing storage. Source analysis and verification are observational.
+- `SuggestedWindow` proposes a -40 dB threshold with edge padding. It never
+  publishes edits. `PlaybackWindow` uses source milliseconds with an exclusive
+  end, matching the existing authoring format. Nil means the entire source.
+- `SuggestCalibration` accepts an explicit method and target, not game family
+  names. `DefaultCalibrationOptions` selects active P95 RMS with target -20 dB.
+  `GatedLoudness` uses the existing K-weighted/gated estimate for selections of at
+  least 400 ms, with active-RMS fallback for shorter selections. Targets must be
+  finite in [-60,-6] dB; gain is constrained to [-48,+12] dB and -3 dB sample peak.
+  These are estimates, not certified loudness/true-peak or listening acceptance.
+  Mapping a consumer's family to method/target remains consumer policy.
+- `CheckSourceStamp` cheaply compares identity/size/mtime. `VerifySource` hashes
+  actual content, rejecting same-size/same-timestamp replacements. These checks
+  are not a write lock against a subsequent external change. Existing streams
+  continue using their frozen bytes until their owner decides how to respond.
+- Cancellation is checked around bounded 64 KiB file reads and 10 ms analysis
+  buckets, including EOF. An in-flight filesystem/codec call must return first.
+  Analysis always closes its decoder, including cancellation and failure paths;
+  recoverable I/O/decoder/cleanup causes remain in returned errors.
+- `Stream(window, loop)` returns an independent seekable decoder using the same
+  internal window/loop implementation as gameplay playback. Close it even after
+  EOF; closure is terminal/idempotent and does not retire other streams or the
+  immutable source. The caller serializes Read/Seek/Close and stops native reads
+  before closing. Preparation failure closes its decoder too.
+
+Immutable source methods can be called concurrently if the supplied decoder itself
+supports independent concurrent calls. Stream operations remain caller-serialized.
+`OpenLibraryProject(path, EditorOptions)` opens a disk-backed schema-3 project with
+explicit decoder and calibration callbacks. Optional consumer validation receives
+detached metadata; it owns completeness, vocabulary and target eligibility.
+`DefaultEditorOptions` supplies the generic active-RMS policy for a given decoder;
+games supply their family-specific targets explicitly. Asset
+roots resolve against the manifest directory, not the process directory. Imports
+default to `imported/`; a project can supply its own relative destination policy
+and existing-path eligibility. These are trusted local-project filesystem rules,
+not a symlink-proof sandbox. `RuntimeLibrary` requires an explicit encoded-byte
+budget and freezes a playback-only projection without interpreting routing.
+
+`LibraryDocument` preserves schema-3 recording/cue/provenance/taxonomy fields.
+`Routing.Groups` retains the schema-3 wire keys music/dungeon/naval without
+interpreting them as game policy. Consumer descriptors supply their labels,
+arbitrary target identities and any default target used for inheritance. Missing
+targets, explicit null/silence, and concrete cues remain distinct. Additional wire
+sections require an explicit future schema revision; the initial extraction does
+not silently extend schema 3. Structural validation rejects duplicate JSON keys,
+unknown fields/sections, invalid references and malformed numbers. Consumer
+validation adds vocabulary, completeness and target eligibility.
+
+The editor serializes edits, Undo/Redo, Save and import; it is not concurrency-safe.
+`Clone` creates a detached working copy for background operations. Compare revisions
+before accepting results; `ApplyDocument` rejects stale composite edits. Region
+drafts bind document revision and immutable source, derive preview/commit settings
+through the same transformation, and verify content before one undoable publication.
+`BeginCalibration`/`ApplyCalibration` likewise bind the reviewed proposal and source
+to one AUTO-calibration edit. UI request/selection generations remain caller-owned;
+changing the selected loaded source invalidates its approval even without a document edit.
+No-op edits retain Redo. Opening permits file repair; Save validates actual sources.
+
+Save keeps untouched entries byte-for-byte and detects external manifest edits,
+including on a no-op Save. Publication uses a flushed/closed temporary file and
+cooperative lock. Import publication does not overwrite a different existing file;
+Undo never deletes retained imports. A completed rename followed by a flush or
+cleanup failure remains a publication: inspect `LastPublication`, `NeedsSync` and
+`RetainedImports` independently of `Dirty`. `MergePublication` retains real disk
+facts when a background document result is stale, without replacing newer edits.
+Windows lacks directory-sync acceptance and reports that limit explicitly. Source
+verification/locks coordinate callers but cannot prevent arbitrary external writers.
+
+The TUI/session still lives in Redux until its tools-module cutover. Core authoring
+regressions use generated fixtures; the game retains its integration coverage.
+
 ## Finite music transport
 
 `NewMusicPlayer(library, options)` owns one finite transport, separate from SFX
@@ -213,7 +302,7 @@ From the SDK checkout, use `python3 -I -B scripts/check.py plan`, then
 dependencies before these offline checks. The checker isolates the module from
 other checkouts, rejects game imports/replacements and verifies package completion
 and zero skipped tests. The consumer's one local replacement exists only inside
-that isolated proof. See [validation policy](../../docs/VALIDATION.md).
+that isolated proof. See the [repository validation policy](https://github.com/bradhannah/berad-sdk/blob/feat/berad-audio/docs/VALIDATION.md).
 
 Game-owned bridge tests remain in Redux and are distinct from independent SDK
 acceptance. Controlled transports and generated PCM/WAV tests are not native

@@ -15,6 +15,7 @@ module/consumer checks on the `feat/berad-audio` development branch. Consumers
 must pin a remotely available reviewed revision; there are no stable SDK version
 releases. Text and graphics remain planned identities.
 See the [module catalog](modules/README.md).
+The [tool catalog](tools/README.md) describes the separately versioned tools layout.
 
 ## Converting an existing subsystem?
 
@@ -56,6 +57,12 @@ Equivalent Make targets are `make plan`, `make validate`, and `make quality-gate
 Checks are local and offline. Checker and registered module lanes reuse successful
 results when their inputs match; documentation checks remain inexpensive and run
 every time. See [validation](docs/VALIDATION.md) for exact coverage and limitations.
+
+Use `make plan MODULE=modules/berad-audio` for focused selection. `make provision`
+is explicit network-enabled setup, separate from offline validation. `make clean`
+removes only known generated tool binaries under `.cache/bin`; it keeps validation
+results and authored projects. Tool module selection becomes available when its
+implementation is registered, rather than treating an empty directory as acceptance.
 
 Read the [documentation catalog](docs/README.md) and
 [contribution policy](CONTRIBUTING.md) for the remaining contracts.

@@ -12,6 +12,14 @@ in another repository. Record that identity, the future path, and an explicit
 consumer migration. A GitHub-looking import is not proof that a module is available.
 See [compatibility](COMPATIBILITY.md).
 
+Standalone developer applications use separate modules under `tools/berad-<domain>`
+with identity `github.com/bradhannah/berad-sdk/tools/berad-<domain>`. Keep their
+executables in `cmd/` and expose a small public entry point where a consumer needs
+to supply its own project policies. This separates tool dependencies and versions
+from runtime modules. Shared authoring services belong with their runtime module;
+terminal presentation belongs in the tools module. Runtime imports never depend
+on tools. Register tool identities/checks explicitly before adding implementation.
+
 ## SDK-MOD-002 — Layout and exposure
 
 Use this structure, adding optional directories only for real content:

@@ -10,14 +10,16 @@ import (
 	"math"
 	"sync/atomic"
 	"time"
+
+	"github.com/bradhannah/berad-sdk/modules/berad-audio/internal/pcm"
 )
 
 const bytesPerFrame = 4
 
 type section struct {
-	source                PCMStream
-	start, size, position int64
-	loop                  bool
+	*pcm.Section
+	source PCMStream
+	size   int64
 }
 
 func selectSource(source PCMStream, rate int, window *Window, loop bool) (*section, error) {
@@ -33,76 +35,19 @@ func selectSource(source PCMStream, rate int, window *Window, loop bool) (*secti
 			return nil, fmt.Errorf("%w: window exceeds decoded recording", ErrInvalidLibrary)
 		}
 	}
-	selected := &section{source: source, start: start, size: end - start, position: 0, loop: loop}
-	if _, err := selected.Seek(0, io.SeekStart); err != nil {
+	selected, err := pcm.Select(source, length, pcm.Options{Start: start, End: end, Loop: loop,
+		InvalidData: ErrInvalidLibrary, InvalidRequest: ErrInvalidRequest})
+	if err != nil {
 		return nil, err
 	}
 
-	return selected, nil
+	return &section{Section: selected, source: source, size: selected.Length()}, nil
 }
 
 func frameOffset(duration time.Duration, rate int) int64 {
 	seconds, remainder := duration/time.Second, duration%time.Second
 
 	return (int64(seconds)*int64(rate) + int64(remainder)*int64(rate)/int64(time.Second)) * bytesPerFrame
-}
-
-//nolint:wrapcheck // Reader adapters preserve source errors and EOF identity.
-func (source *section) Read(buffer []byte) (int, error) {
-	if len(buffer) == 0 {
-		return 0, nil
-	}
-	if source.position == source.size {
-		if !source.loop {
-			return 0, io.EOF
-		}
-		if _, err := source.Seek(0, io.SeekStart); err != nil {
-			return 0, err
-		}
-	}
-	buffer = buffer[:min(int64(len(buffer)), source.size-source.position)]
-	count, err := source.source.Read(buffer)
-	if count < 0 || count > len(buffer) {
-		return 0, fmt.Errorf("%w: invalid decoded byte count", ErrInvalidLibrary)
-	}
-	source.position += int64(count)
-	if errors.Is(err, io.EOF) {
-		if source.position < source.size {
-			return count, io.ErrUnexpectedEOF
-		}
-		if source.loop {
-			return count, nil
-		}
-	}
-
-	return count, err
-}
-
-func (source *section) Seek(offset int64, whence int) (int64, error) {
-	switch whence {
-	case io.SeekStart:
-	case io.SeekCurrent:
-		if offset > source.size-source.position || offset < -source.position {
-			return 0, fmt.Errorf("%w: seek outside recording", ErrInvalidRequest)
-		}
-		offset += source.position
-	case io.SeekEnd:
-		if offset > 0 || offset < -source.size {
-			return 0, fmt.Errorf("%w: seek outside recording", ErrInvalidRequest)
-		}
-		offset += source.size
-	default:
-		return 0, fmt.Errorf("%w: invalid seek origin", ErrInvalidRequest)
-	}
-	if offset < 0 || offset > source.size {
-		return 0, fmt.Errorf("%w: seek outside recording", ErrInvalidRequest)
-	}
-	if _, err := source.source.Seek(source.start+offset, io.SeekStart); err != nil {
-		return 0, fmt.Errorf("seek decoded recording: %w", err)
-	}
-	source.position = offset
-
-	return offset, nil
 }
 
 type readFailure struct{ err error }
@@ -198,28 +143,7 @@ func (stream *pcmBoundary) Seek(offset int64, whence int) (int64, error) {
 
 //nolint:wrapcheck // Preserve one-time decoder errors, including errors with a full buffer.
 func readPCM(source io.Reader, buffer []byte) (int, error) {
-	count, empty := 0, 0
-	for count < len(buffer) {
-		read, err := source.Read(buffer[count:])
-		if read < 0 || read > len(buffer)-count {
-			return count, fmt.Errorf("%w: invalid read count", ErrInvalidLibrary)
-		}
-		count += read
-		if err != nil {
-			return count, err
-		}
-		if read == 0 {
-			empty++
-			const maxEmptyReads = 100
-			if empty == maxEmptyReads {
-				return count, io.ErrNoProgress
-			}
-		} else {
-			empty = 0
-		}
-	}
-
-	return count, nil
+	return pcm.Read(source, buffer, ErrInvalidLibrary)
 }
 
 func closeSource(source PCMStream) error {
