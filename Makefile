@@ -1,8 +1,11 @@
 PYTHON ?= python3
+GO ?= go
 MODULE ?=
 SELECT_MODULE = $(if $(MODULE),--module $(MODULE),)
+TEXT_DEMO_BIN = .cache/bin/berad-text-demo$(if $(filter Windows_NT,$(OS)),.exe,)
 
 .PHONY: plan validate quality-gate provision audio-runtime-check audio-tools-check audio-tools clean
+.PHONY: text-check build-text-demo text-demo text-demo-smoke
 
 plan:
 	$(PYTHON) -I -B scripts/check.py plan $(SELECT_MODULE)
@@ -25,6 +28,19 @@ audio-tools-check:
 audio-tools:
 	$(MAKE) -C tools/berad-audio build
 
+text-check:
+	$(MAKE) quality-gate MODULE=modules/berad-text
+
+build-text-demo:
+	mkdir -p .cache/bin
+	GOWORK=off GOPROXY=off GOSUMDB=off $(GO) -C modules/berad-text build -mod=readonly -o "../../$(TEXT_DEMO_BIN)" ./examples/panel
+
+text-demo: build-text-demo
+	"./$(TEXT_DEMO_BIN)"
+
+text-demo-smoke: build-text-demo
+	$(PYTHON) -I -B scripts/text_demo_smoke.py
+
 # Only SDK-owned generated executables; retain validation proof and authored files.
 clean:
 	$(MAKE) -C tools/berad-audio clean
@@ -33,3 +49,4 @@ clean:
 	rm -f .cache/bin/audio-catalog .cache/bin/audio-catalog.exe
 	rm -f .cache/bin/audio-probe .cache/bin/audio-probe.exe
 	rm -f .cache/bin/audio-runtime-probe .cache/bin/audio-runtime-probe.exe
+	rm -f .cache/bin/berad-text-demo .cache/bin/berad-text-demo.exe

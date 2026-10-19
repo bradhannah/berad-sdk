@@ -21,6 +21,10 @@ Standalone version-qualified tools installation awaits reviewed default-branch
 availability or a separately authorized module tag; pinned Redux game/editor
 installation is verified independently. Neither is native listening acceptance.
 See the [module catalog](modules/README.md).
+For the text demonstration, use `make build-text-demo`, `make text-demo`, or
+`make text-demo-smoke`. The smoke target uses an isolated HOME/working directory,
+an eight-second native startup window, and controlled process cleanup. It requires
+a desktop backend and is separate from physical keyboard/mouse/IME acceptance.
 The [tool catalog](tools/README.md) describes the separately versioned tools layout.
 
 ## Converting an existing subsystem?
