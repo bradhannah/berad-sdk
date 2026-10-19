@@ -20,9 +20,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("module_checks", ROOT / "scripts/module_checks.py")
 MODULE_CHECKS = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE_CHECKS)
+STYLE_SPEC = importlib.util.spec_from_file_location("style_checks", ROOT / "scripts/style_checks.py")
+STYLE_CHECKS = importlib.util.module_from_spec(STYLE_SPEC)
+STYLE_SPEC.loader.exec_module(STYLE_CHECKS)
 IGNORED = {".git", ".cache", "__pycache__"}
 REQUIRED = (
-    "README.md", "LICENSE", "AGENTS.md", "CONTRIBUTING.md", "Makefile", "sdk.json",
+    "README.md", "LICENSE", "AGENTS.md", "CONTRIBUTING.md", "Makefile", "sdk.json", ".golangci.yml",
     "modules/README.md", "docs/README.md", "docs/SDK_CONVENTIONS.md",
     "docs/API_DESIGN.md", "docs/COMPATIBILITY.md", "docs/VALIDATION.md",
     "docs/LICENSING.md", "docs/EXTRACTION_GUIDE.md",
@@ -112,7 +115,7 @@ def fingerprint(root):
     """Bind regression inputs, interpreter/runtime sources, and execution context."""
     hasher = hashlib.sha256()
     paths = [p for p in files(root) if p.relative_to(root).parts[0] in {"scripts", "tests"}
-             or p.relative_to(root).as_posix() in {"sdk.json", "Makefile"}]
+             or p.relative_to(root).as_posix() in {"sdk.json", "Makefile", ".golangci.yml"}]
     for path in paths:
         hasher.update(str(path.relative_to(root)).encode())
         hasher.update(path.read_bytes())
@@ -141,7 +144,14 @@ def reusable(record, identity):
         return False
 
 
-def regression_tests(root, cache, identity_function=fingerprint, runner=subprocess.run):
+def regression_fingerprint(root):
+    """Real formatter/linter failure probes additionally depend on their Go tools."""
+    environment = MODULE_CHECKS.environment()
+    return hashlib.sha256((fingerprint(root) + MODULE_CHECKS.tools(root, environment) +
+                           STYLE_CHECKS.tool_identity(root, MODULE_CHECKS, environment)).encode()).hexdigest()
+
+
+def regression_tests(root, cache, identity_function=regression_fingerprint, runner=subprocess.run):
     cache.mkdir(parents=True, exist_ok=True)
     lock = cache / "running"
     try:
@@ -170,7 +180,9 @@ def regression_tests(root, cache, identity_function=fingerprint, runner=subproce
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("plan", "validate", "quality-gate", "provision"))
+    parser.add_argument("operation", choices=("plan", "validate", "quality-gate", "provision", "tools",
+                                            "format", "format-check", "lint", "lint-fix", "lint-config-check",
+                                            "tooling-test"))
     parser.add_argument("--module", action="append", default=[], help="registered identity, e.g. modules/berad-audio")
     args = parser.parse_args()
     start = time.monotonic()
@@ -178,17 +190,30 @@ def main():
         modules = contracts(ROOT)
         print("contracts: PASS (cheap manifest, inventory, links, catalog, skill and source-path checks)")
         MODULE_CHECKS.INVENTORY.selected_jobs(modules, args.module)
+        if args.operation == "tooling-test":
+            regression_tests(ROOT, ROOT / ".cache/validation")
+            return 0
+        if args.operation == "tools":
+            STYLE_CHECKS.provision(ROOT, MODULE_CHECKS)
+            return 0
+        if args.operation in ("format", "format-check", "lint", "lint-fix", "lint-config-check"):
+            STYLE_CHECKS.validate(ROOT, modules, MODULE_CHECKS, lambda: fingerprint(ROOT),
+                                  operation=args.operation, selectors=args.module)
+            return 0
         if args.operation == "provision":
             MODULE_CHECKS.provision(ROOT, modules, args.module)
             return 0
         cache = ROOT / ".cache/validation"
         if args.operation == "plan":
-            action = "REUSE" if reusable(cache / "checker-tests.json", fingerprint(ROOT)) else "RUN"
+            STYLE_CHECKS.validate(ROOT, modules, MODULE_CHECKS, lambda: fingerprint(ROOT),
+                                  selectors=args.module, plan=True)
+            action = "REUSE" if reusable(cache / "checker-tests.json", regression_fingerprint(ROOT)) else "RUN"
             print(f"checker-tests: {action} (matching material-input evidence required)")
             MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT), plan=True, selectors=args.module)
             if not modules:
                 print("runtime/native/consumer suites: NOT REGISTERED (foundation stage)")
         else:
+            STYLE_CHECKS.validate(ROOT, modules, MODULE_CHECKS, lambda: fingerprint(ROOT), selectors=args.module)
             regression_tests(ROOT, cache)
             MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT), selectors=args.module)
             scope = ",".join(args.module) or "all registered modules"

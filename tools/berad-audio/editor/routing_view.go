@@ -16,7 +16,9 @@ func (m *model) routingFilterTitle() string {
 	}
 	text := "FILTER: " + filters[m.routing.filter] + " · Ctrl+F changes"
 	if m.workspace == workspaceLocations {
-		scope := []string{"All", m.groupLabel(routingMusic), m.groupLabel(routingDungeon), "Dynamic emitters", m.groupLabel(routingNaval)}[m.routing.scope]
+		scopes := []string{"All", m.groupLabel(routingMusic), m.groupLabel(routingDungeon),
+			"Dynamic emitters", m.groupLabel(routingNaval)}
+		scope := scopes[m.routing.scope]
 		text += "  SCOPE: " + scope + " · s changes"
 	}
 
@@ -83,7 +85,7 @@ func (m *model) routingDetailLines(width int) []string {
 		if m.workspace == workspaceTiles {
 			group = ""
 		}
-		if m.targetPolicy(group, target).Category == "music" {
+		if m.targetPolicy(group, target).Category == categoryMusic {
 			label = "Music: None / silence"
 		}
 		rows = append(rows, m.colors.dim.Render(label))
@@ -104,27 +106,31 @@ func (m *model) routingDetailLines(width int) []string {
 	} else {
 		rows = append(rows, m.colors.focus.Render("[i Choose file] [B Sound settings]"))
 	}
-	if profile, ambient := m.doc.Routing().Ambient[cue]; ambient {
-		switch {
-		case m.workspace == workspaceTiles:
-			rows = append(rows, m.colors.focus.Render("TILE SOUND · EFFECTIVE SETTINGS"))
-			m.tileAmbientDetails(add)
-		case profile.RadiusTiles == 0:
-			rows = append(rows, m.colors.focus.Render("SOUND SETTINGS · SHARED"))
-			add("Non-spatial ambient background")
-		default:
-			rows = append(rows, m.colors.focus.Render("SOUND SETTINGS · SHARED"))
-			add(fmt.Sprintf("Hearing range: %g tiles", profile.RadiusTiles))
-		}
-		add(fmt.Sprintf("Fade in/out: %g / %g seconds",
-			float64(profile.FadeInMs)/msPerSecond, float64(profile.FadeOutMs)/msPerSecond))
-	}
+	m.appendAmbientDetails(cue, add, func(heading string) { rows = append(rows, m.colors.focus.Render(heading)) })
 	if m.workspace == workspaceTiles {
 		m.routingTileDetails(add)
 	}
 	add(fmt.Sprintf("Used by: %d configured assignments (U opens)", len(m.routingUsages(cue))))
 
 	return m.colourRoutingDetails(rows)
+}
+
+func (m *model) appendAmbientDetails(cue string, add, heading func(string)) {
+	if profile, ambient := m.doc.Routing().Ambient[cue]; ambient {
+		switch {
+		case m.workspace == workspaceTiles:
+			heading("TILE SOUND · EFFECTIVE SETTINGS")
+			m.tileAmbientDetails(add)
+		case profile.RadiusTiles == 0:
+			heading("SOUND SETTINGS · SHARED")
+			add("Non-spatial ambient background")
+		default:
+			heading("SOUND SETTINGS · SHARED")
+			add(fmt.Sprintf("Hearing range: %g tiles", profile.RadiusTiles))
+		}
+		add(fmt.Sprintf("Fade in/out: %g / %g seconds",
+			float64(profile.FadeInMs)/msPerSecond, float64(profile.FadeOutMs)/msPerSecond))
+	}
 }
 
 func (m *model) tileAmbientDetails(add func(string)) {

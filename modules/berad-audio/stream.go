@@ -37,7 +37,7 @@ func selectSource(source PCMStream, rate int, window *Window, loop bool) (*secti
 	selected, err := pcm.Select(source, length, pcm.Options{Start: start, End: end, Loop: loop,
 		InvalidData: ErrInvalidLibrary, InvalidRequest: ErrInvalidRequest})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("select playback region: %w", err)
 	}
 
 	return &section{Section: selected, source: source, size: selected.Length()}, nil
@@ -64,6 +64,7 @@ func newPCMBoundary(source *section) *pcmBoundary {
 	stream.source = source
 	stream.gain.Store(math.Float64bits(1))
 	stream.filter = pcm.NewGain(source, &stream.gain, ErrInvalidLibrary)
+
 	return stream
 }
 
@@ -86,7 +87,7 @@ func (stream *pcmBoundary) Read(buffer []byte) (int, error) {
 		return count, io.EOF
 	}
 
-	return count, err
+	return count, err //nolint:wrapcheck // Only nil or EOF reaches the device; other errors are retained in Failure above.
 }
 
 func (stream *pcmBoundary) Seek(offset int64, whence int) (int64, error) {
@@ -97,8 +98,9 @@ func (stream *pcmBoundary) Seek(offset int64, whence int) (int64, error) {
 	if err != nil {
 		stream.failure.CompareAndSwap(nil, &readFailure{err: fmt.Errorf("seek audio: %w", err)})
 
-		return position, err
+		return position, err //nolint:wrapcheck // Failure retains context; preserve the decoder's immediate seek result.
 	}
+
 	return position, nil
 }
 

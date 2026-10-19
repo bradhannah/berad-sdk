@@ -28,7 +28,11 @@ reachability or listening approval. Availability, assignment review, listening/l
 review and trigger coverage are independent dimensions. Generation never accepts a
 recording or modifies the authoring manifest.
 
-Output must not alias source inputs. Two report outputs are not an atomic transaction:
+Output must not alias source inputs. Both destinations are checked against each
+other and all inputs before either write. A genuinely missing path is allowed;
+unexpected inspection failures are returned with context rather than treated as
+absence. Explicit developer-selected paths are not restricted to a sandbox.
+Two report outputs are not an atomic transaction:
 if the second write fails, the first may exist. Derived reports are regenerable
 artifacts, not authored source, persistent mixer sessions or a second backlog.
 Consumers maintain semantic cue IDs, classification policy, actual event evidence,

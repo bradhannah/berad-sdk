@@ -31,6 +31,10 @@ Resolve links from this skill directory, not the current consumer working direct
    lowest meaningful regression, add necessary public/consumer boundary proof,
    and reuse matching results. Explain invalidation and avoid repeated all-module
    suites. Register new modules/check graphs before claiming full gate coverage.
+   Enforce [strict linting](../../../docs/LINTING.md) for every runtime and tool:
+   pinned tools, full-source zero findings, reviewed automatic fixes first, then
+   complete manual cleanup. Prefer the documented Make targets. No debt cutoff or
+   broad exemption can substitute for compliance.
 6. Follow [compatibility](../../../docs/COMPATIBILITY.md) and the
    [consumer template](../../../docs/templates/consumer-integration.md). Keep an
    unchanged supported-consumer fixture; publish an available dependency before
@@ -47,8 +51,13 @@ Load [berad-audio-development](../berad-audio-development/SKILL.md) for audio
 runtime/backend, analysis/calibration, document/publication, terminal editor,
 catalog, project and probe work. It routes to the audio-owned contracts and
 neutral quickstart. Consumer policy stays in that consumer's integration guide.
-Text and graphics remain planned; do not infer delivered APIs or move their
-consumer guidance before an approved extraction establishes the boundary.
+
+For Berad Text, read the [module guide](../../../modules/berad-text/README.md) and
+[API contracts](../../../modules/berad-text/docs/API.md) for supplied fonts,
+styled layout, local geometry, renderer ownership and native-render checks.
+Input, editing, focus, stacking and application text policy remain host-owned.
+Use the module guide's Make targets for repeatable checks and demonstrations.
+Graphics remains planned; do not infer delivered APIs before its approved extraction.
 
 ## Registered validation commands
 

@@ -42,12 +42,13 @@ func (m *model) routingAssignmentChoices(destination string) []routingChoice {
 		owner = ""
 	}
 	var choices []routingChoice
-	if fallback := m.targets.Groups[owner].DefaultTarget; m.workspace == workspaceLocations && fallback != "" && target != fallback {
+	if fallback := m.targets.Groups[owner].DefaultTarget; m.workspace == workspaceLocations &&
+		fallback != "" && target != fallback {
 		choices = append(choices, routingChoice{routingInherit, "Inherit default", "", nil})
 	}
 	if owner != routingEmitter {
 		label := "Silence / no ambient source"
-		if m.targetPolicy(owner, target).Category == "music" {
+		if m.targetPolicy(owner, target).Category == categoryMusic {
 			label = "No music"
 		}
 		choices = append(choices, routingChoice{routingNone, label, "", nil})
@@ -84,9 +85,10 @@ func (m *model) compatibleRoutingCue(cueID, owner, target string) bool {
 	if policy.Category == "music" {
 		return m.cuePreviewCategory(cueID) == previewMusic && len(m.doc.Cue(cueID).Recordings()) == 1
 	}
-	if policy.Category == "sfx" {
+	if policy.Category == categorySFX {
 		return m.cuePreviewCategory(cueID) == previewSFX
 	}
+
 	return ambient && (!policy.Background || profile.RadiusTiles == 0) && (!policy.Spatial || profile.RadiusTiles > 0)
 }
 
@@ -305,7 +307,7 @@ func (m *model) jumpToAudioUsage(usage routingUsage) tea.Cmd {
 	m.routing.menu = nil
 	workspace, target := workspaceLocations, usage.Workspace+"|"+usage.Target
 	switch usage.Workspace {
-	case "tiles":
+	case unitTiles:
 		workspace, target = workspaceTiles, usage.Target
 	case routingMoments:
 		workspace, target = workspaceMoments, usage.Target

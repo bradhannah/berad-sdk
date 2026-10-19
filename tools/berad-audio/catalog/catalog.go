@@ -13,9 +13,13 @@ import (
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
+// PlaybackWindow preserves the shared authoring window schema in catalog views.
 type PlaybackWindow = authoring.PlaybackWindow
+
+// RecordingProvenance preserves source attribution in generated reports.
 type RecordingProvenance = authoring.RecordingProvenance
 
+// SelectionCycle identifies ordered recording variants.
 const SelectionCycle = authoring.SelectionCycle
 const catalogPlaybackRequestFound = "playback_request_found"
 const provenanceUnknown = "unknown"
@@ -60,6 +64,8 @@ type Catalog struct {
 
 // CatalogAsset describes one exact embedded recording. Null calibration means
 // no accepted calibration exists; it does not invent a 0dB approval.
+//
+//nolint:revive // Preserve the published CatalogAsset API name for existing consumers.
 type CatalogAsset struct {
 	ID                  string              `json:"id"`
 	AcousticFamily      string              `json:"acousticFamily,omitempty"`
@@ -87,6 +93,8 @@ type CatalogAsset struct {
 // CatalogMoment describes one semantic cue or musical/environmental context.
 // Availability, assignment suitability, trigger evidence, and listening review
 // are independent. A source reference is not a completed gameplay walkthrough.
+//
+//nolint:revive // Preserve the published CatalogMoment API name for existing consumers.
 type CatalogMoment struct {
 	ID               string            `json:"id"`
 	Name             string            `json:"name"`
@@ -126,6 +134,8 @@ type CatalogMoment struct {
 }
 
 // CatalogEvidence points to a static source reference, never inferred acceptance.
+//
+//nolint:revive // Preserve the published CatalogEvidence API name for existing consumers.
 type CatalogEvidence struct {
 	Path     string `json:"path"`
 	Line     int    `json:"line"`
@@ -143,7 +153,7 @@ func Build(manifest []byte, files fs.FS, options Options) (*Catalog, error) {
 	}
 	library, err := authoring.ParseDocument(manifest, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse catalog manifest: %w", err)
 	}
 	hash := sha256.Sum256(manifest)
 	catalog := &Catalog{
@@ -185,7 +195,9 @@ func newCatalogMoment(id, name, category string) CatalogMoment {
 	return moment
 }
 
-func (catalog *Catalog) assignCue(moment *CatalogMoment, cueID string, library authoring.LibraryDocument, options Options) {
+func (catalog *Catalog) assignCue(
+	moment *CatalogMoment, cueID string, library authoring.LibraryDocument, options Options,
+) {
 	entry := library.Cues[cueID]
 	profile := groupFor(library.Taxonomy.CueProfiles, cueID)
 	moment.SearchTerms = append(slices.Clone(entry.SearchTerms),
@@ -193,7 +205,7 @@ func (catalog *Catalog) assignCue(moment *CatalogMoment, cueID string, library a
 	classification := library.Taxonomy.Profiles[profile]
 	moment.Category = options.CueCategories[cueID]
 	if moment.Category == "" {
-		moment.Category = "sfx"
+		moment.Category = catalogSFX
 		if _, ambient := library.Routing.Ambient[cueID]; ambient {
 			moment.Category = "ambient"
 		}
@@ -271,7 +283,7 @@ func (catalog *Catalog) addLibraryRecordings(library authoring.LibraryDocument, 
 		if err != nil {
 			return fmt.Errorf("walk embedded recordings: %w", err)
 		}
-		if entry.IsDir() || registeredPaths[path] || formatName(path) == "unknown" {
+		if entry.IsDir() || registeredPaths[path] || formatName(path) == provenanceUnknown {
 			return nil
 		}
 		asset, err := InspectAsset("unregistered/"+path, path, files, options)
@@ -368,6 +380,7 @@ func sortedKeys[T any](values map[string]T) []string {
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
+
 	return keys
 }
 
@@ -377,6 +390,7 @@ func groupFor(groups map[string][]string, id string) string {
 			return group
 		}
 	}
+
 	return ""
 }
 

@@ -23,14 +23,7 @@ func (m *model) updateSelectedAvailability(message loadedMsg) {
 	}
 	status := m.doc.FileAvailability(recordingID)
 	if status.State == audio.RecordingChecking {
-		failure := message.err
-		if failure == nil && message.clip != nil {
-			var stream *audio.Stream
-			stream, failure = message.clip.Stream(m.doc.Recording(recordingID).PlaybackWindow, false)
-			if failure == nil {
-				failure = stream.Close()
-			}
-		}
+		failure := m.checkSelectedStream(message)
 		if failure != nil {
 			status.State, status.Reason = audio.RecordingInvalid, failure.Error()
 		} else {
@@ -38,6 +31,21 @@ func (m *model) updateSelectedAvailability(message loadedMsg) {
 		}
 	}
 	m.availability[recordingID] = status
+}
+
+func (m *model) checkSelectedStream(message loadedMsg) error {
+	if message.err != nil || message.clip == nil {
+		return message.err
+	}
+	stream, err := message.clip.Stream(m.doc.Recording(message.request.recordingID).PlaybackWindow, false)
+	if err != nil {
+		return fmt.Errorf("check selected stream: %w", err)
+	}
+	if err := stream.Close(); err != nil {
+		return fmt.Errorf("close selected stream check: %w", err)
+	}
+
+	return nil
 }
 
 type availabilityFilter int
@@ -256,12 +264,14 @@ func (m *model) matchesFacet(identity, key, value string) bool {
 
 func (m *model) matchesCueFacet(cueID, key, value string) bool {
 	classification := m.doc.CueClassification(cueID)
-	category := "sfx"
+	category := categorySFX
 	switch m.cuePreviewCategory(cueID) {
 	case previewMusic:
-		category = "music"
+		category = categoryMusic
 	case previewAmbience:
-		category = "ambient"
+		category = categoryAmbient
+	case previewSFX, previewCategoryCount, previewCategoryAuto:
+		// Preserve the default SFX facet for non-music/non-ambient values.
 	}
 	switch key {
 	case "category":

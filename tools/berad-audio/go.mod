@@ -5,7 +5,7 @@ go 1.27.0
 toolchain go1.27.1
 
 require (
-	github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261018233803-ed95f13c63b7
+	github.com/bradhannah/berad-sdk/modules/berad-audio v0.0.0-20261019154938-302457e108b8
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.10.1

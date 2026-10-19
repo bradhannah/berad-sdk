@@ -88,6 +88,7 @@ func lockAudioLibrary(manifest string) (func() error, error) {
 		if err := lock.Unlock(); err != nil {
 			return fmt.Errorf("release audio library lock: %w", err)
 		}
+
 		return nil
 	}, nil
 }

@@ -16,6 +16,8 @@ or runs a bounded standalone Oto audition. `-file` is required; there is no game
 checkout/default manifest lookup. `-check` opens no audio device and writes no
 source data. Device probing is native acceptance only when actually run on the
 named host; headless checks and compilation are separate evidence.
+The standalone probe releases its interrupt context before process exit, including
+failure paths; stream/native playback retirement completes within the run operation.
 
 `cmd/audio-editor` opens `-library <manifest>` with neutral defaults or
 `-project <descriptor>` with explicit targets/calibration/preview policy. `-check`
@@ -27,7 +29,8 @@ crop/duplicate/calibration, routing, temporary Soundscape, Save and Undo/Redo.
 explicit `-output`/`-guide` destinations. `-measure` records sample peak and RMS,
 not LUFS, true peak or listening approval. It hashes the exact supplied manifest;
 game source scanning and gameplay review notes remain consumer enrichment. It
-refuses output aliases of input files. Reports are derived outputs, not an atomic
+refuses output aliases of input files and unexpected input-inspection failures
+before either write. Reports are derived outputs, not an atomic
 multi-file transaction: a second-output I/O failure can leave the first report.
 
 The optional `cmd/audio-runtime-probe` (`make audio-runtime-probe`) takes `-project`
@@ -103,4 +106,7 @@ repository Make/checker scripts to build its commands.
 
 The checker tests published dependency pins and, separately, declared candidate
 runtime integration. Both use isolated consumers and reject game dependencies.
+All runtime/tool source also participates in the SDK's mandatory pinned formatting
+and full-source lint gates. Provision tools with `make tools` from the SDK root;
+`make lint MODULE=tools/berad-audio` selects this tool module explicitly.
 See the [SDK validation contract](https://github.com/bradhannah/berad-sdk/blob/feat/berad-audio/docs/VALIDATION.md).

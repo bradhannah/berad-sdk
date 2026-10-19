@@ -75,9 +75,13 @@ type EditorOptions struct {
 // imported-file placement. Consumers override policy explicitly; no game family,
 // target registry or embedded asset root is inferred.
 func DefaultEditorOptions(decode audio.Decoder) EditorOptions {
-	return EditorOptions{Decode: decode, Calibration: func(string) CalibrationOptions {
+	var options EditorOptions
+	options.Decode = decode
+	options.Calibration = func(string) CalibrationOptions {
 		return DefaultCalibrationOptions()
-	}}
+	}
+
+	return options
 }
 
 // OpenLibraryProject opens the shared authoring engine for an independent project.
@@ -94,19 +98,9 @@ func OpenLibraryProject(path string, options EditorOptions) (*LibraryEditor, err
 	if err != nil {
 		return nil, fmt.Errorf("open audio library: %w", err)
 	}
-	root := options.AssetRoot
-	if root == "" {
-		root = filepath.Dir(absolute)
-	} else if !filepath.IsAbs(root) {
-		root = filepath.Join(filepath.Dir(absolute), root)
-	}
-	root = filepath.Clean(root)
-	info, err := os.Stat(root)
+	root, err := resolveAssetRoot(absolute, options.AssetRoot)
 	if err != nil {
-		return nil, fmt.Errorf("open audio asset root: %w", err)
-	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("%w: asset root is not a directory", ErrAudioLibrary)
+		return nil, err
 	}
 	if options.ImportDirectory != "" &&
 		(!fs.ValidPath(options.ImportDirectory) || strings.Contains(options.ImportDirectory, "\\")) {
@@ -117,17 +111,53 @@ func OpenLibraryProject(path string, options EditorOptions) (*LibraryEditor, err
 	if err != nil {
 		return nil, err
 	}
-	for _, category := range options.Targets.CueCategories {
+	if err := validateAuthoringTargets(options.Targets); err != nil {
+		return nil, err
+	}
+
+	editor := newLibraryEditor(absolute, root, options)
+	editor.files, editor.library = files, library
+	editor.baseline, editor.saved = library, data
+	editor.beginPublication(absolute, false)
+	editor.publication.State = PublicationUnchanged
+
+	return editor, nil
+}
+
+func validateAuthoringTargets(targets AuthoringTargets) error {
+	for _, category := range targets.CueCategories {
 		if category != catalogMusic && category != catalogSFX && category != routingAmbientKey {
-			return nil, fmt.Errorf("%w: unknown authoring cue category %s", ErrAudioLibrary, category)
+			return fmt.Errorf("%w: unknown authoring cue category %s", ErrAudioLibrary, category)
 		}
 	}
-	for group := range options.Targets.Groups {
+	for group := range targets.Groups {
 		if !schemaThreeAssignmentGroup(group) {
-			return nil, fmt.Errorf("%w: unknown schema-3 target group %q", ErrLibrary, group)
+			return fmt.Errorf("%w: unknown schema-3 target group %q", ErrLibrary, group)
 		}
 	}
 
+	return nil
+}
+
+func resolveAssetRoot(manifest, root string) (string, error) {
+	if root == "" {
+		root = filepath.Dir(manifest)
+	} else if !filepath.IsAbs(root) {
+		root = filepath.Join(filepath.Dir(manifest), root)
+	}
+	root = filepath.Clean(root)
+	info, err := os.Stat(root)
+	if err != nil {
+		return "", fmt.Errorf("open audio asset root: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("%w: asset root is not a directory", ErrAudioLibrary)
+	}
+
+	return root, nil
+}
+
+func newLibraryEditor(absolute, root string, options EditorOptions) *LibraryEditor {
 	editor := new(LibraryEditor)
 	editor.assetRoot, editor.validator, editor.importDirectory = root, options.Validate, options.ImportDirectory
 	editor.decode, editor.calibrationPolicy = options.Decode, options.Calibration
@@ -141,13 +171,10 @@ func OpenLibraryProject(path string, options EditorOptions) (*LibraryEditor, err
 		editor.newRecordingFamily = "unreviewed"
 	}
 	editor.targets = cloneAudioValue(options.Targets)
-	editor.path, editor.files, editor.library = absolute, files, library
-	editor.baseline, editor.saved = library, data
+	editor.path = absolute
 	editor.persistence = defaultLibraryPersistence()
-	editor.beginPublication(absolute, false)
-	editor.publication.State = PublicationUnchanged
 
-	return editor, nil
+	return editor
 }
 
 // Path returns the absolute manifest filename.
@@ -160,7 +187,13 @@ func (e *LibraryEditor) RuntimeLibrary(maxEncodedBytes int64) (*audio.Library, e
 	if err != nil {
 		return nil, err
 	}
-	return audio.NewLibrary(definition, e.files, maxEncodedBytes)
+
+	library, err := audio.NewLibrary(definition, e.files, maxEncodedBytes)
+	if err != nil {
+		return nil, fmt.Errorf("freeze authored library: %w", err)
+	}
+
+	return library, nil
 }
 
 // Document returns a detached complete metadata view.
@@ -172,6 +205,7 @@ func (e *LibraryEditor) ApplyDocument(expectedRevision uint64, document LibraryD
 	if e.revision != expectedRevision {
 		return ErrDocumentStale
 	}
+
 	return e.replace(&document)
 }
 
@@ -269,7 +303,8 @@ func (e *LibraryEditor) AddRecording(recordingID string) error {
 	next.Recordings[recordingID] = Recording{File: nil, CalibrationGainDB: nil, PlaybackWindow: nil,
 		CalibrationPolicy: "", CalibrationTargetDB: nil,
 		Provenance: unknownRecordingProvenance(), Note: "", SearchTerms: nil}
-	next.Taxonomy.RecordingFamilies[e.newRecordingFamily] = append(next.Taxonomy.RecordingFamilies[e.newRecordingFamily], recordingID)
+	family := next.Taxonomy.RecordingFamilies[e.newRecordingFamily]
+	next.Taxonomy.RecordingFamilies[e.newRecordingFamily] = append(family, recordingID)
 	slices.Sort(next.Taxonomy.RecordingFamilies[e.newRecordingFamily])
 
 	return e.replace(next)
@@ -334,7 +369,8 @@ func (e *LibraryEditor) SetRecordingFamily(recordingID, family string) error {
 		if err != nil {
 			return err
 		}
-		suggestion, err := clip.SuggestCalibration(recording.PlaybackWindow, e.calibrationOptions(family, recording.CalibrationTargetDB))
+		options := e.calibrationOptions(family, recording.CalibrationTargetDB)
+		suggestion, err := clip.SuggestCalibration(recording.PlaybackWindow, options)
 		if err != nil {
 			return fmt.Errorf("calibrate changed recording family: %w", err)
 		}

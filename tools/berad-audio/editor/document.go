@@ -12,6 +12,7 @@ func (m *model) documentOperation(reload bool, summary string, apply func(*audio
 	job, err := m.operations.Begin(m.doc)
 	if err != nil {
 		m.report(err)
+
 		return nil
 	}
 	m.documentGeneration = job.Generation()

@@ -4,6 +4,8 @@
 
 The checker requires Python 3.10+. Registered Go modules additionally need their
 declared toolchain, cached dependencies, and a C compiler for race instrumentation.
+Pinned goimports/golangci-lint executables are provisioned separately with
+`make tools`; see [strict linting](LINTING.md) for the complete source/test policy.
 Original game data, a native audio device, private service, Node and network are
 not required. From the repository:
 
@@ -19,10 +21,13 @@ the checker contracts and registered module lanes:
 | Check | Inputs and execution |
 | --- | --- |
 | contracts | Always runs the cheap manifest/module-inventory, required-file, Markdown link/catalog, skill, and source-path checks |
-| checker-tests | Runs stdlib regression tests for the checker; reuses success when scripts/tests, Makefile, manifest, Python runtime identity, and relevant environment match |
+| style config | Checks tool pins and schema; real ignored-error/type-assertion probes establish effective policy |
+| module format | Checks every authored Go file including tests and nested consumers; never formats silently |
+| module lint | Full unfiltered production/example/support-package lint, plus non-test consumer packages in isolation |
+| checker-tests | Runs checker regressions and real style-tool failure probes; reuse binds scripts/tests, Makefile, manifest, Python/Go toolchains, pinned style binaries and relevant environment |
 | module unit | Isolated dependency-closure check, zero-skip tests, vet and build; reusable per registered module |
 | module race | Separate race-instrumented module tests; does not repeat vet/build |
-| module consumer | Copied public-API consumer using only a validated temporary module substitution; ordinary and race tests |
+| module consumer | Copied public-API consumer using only a validated temporary module substitution; vet, ordinary and race tests |
 
 Contract checks enumerate public skills (valid identities/descriptions, no duplicate
 names) and check their local document links. Documentation catalogs cover root and
@@ -40,9 +45,18 @@ The SDK's offline checks do not require those OpenCode dependencies.
 Each final run reports executed/reused checks and elapsed time. Documentation edits
 do not invalidate checker regression evidence. Checker/test/configuration changes do.
 An unknown active module or Go source fails until its real validation is registered.
-The current runtime inventory is Berad Audio; it transfers the consumer's API
-scenarios, with only the canonical import path changed. Redux bridge checks remain
+The runtime inventory includes Berad Audio and Berad Text. Audio transfers its
+consumer API scenarios with the canonical import path changed. Redux bridge checks remain
 game-owned and are not dependencies of independent SDK validation.
+
+Berad Text additionally declares `execution: native-render`. Its unit, race and
+independent-consumer lanes start an Ebitengine harness and perform real offscreen
+pixel assertions; an available desktop render backend is required. The backend
+selection/display environment and platform are bound into its reuse identity.
+Failure to start rendering is not a skipped success. Physical display, input/IME
+and untested platforms still require separate observations. Font fixtures come
+from the pinned, licensed x/image Go-font dependency; synthetic bitmap pixels are
+created by tests. No new local go:embed exemption is introduced.
 
 Each module lane binds module files/modes, locks, checker policy, Python runtime,
 Go environment/toolchain implementation, compiler identity and lane selection.
@@ -55,6 +69,11 @@ unregistered nested modules and GOFLAGS overrides. Embedded assets require
 extending dependency selection before adding `go:embed`. Only the module root
 README/LICENSE are excluded from expensive lane fingerprints; cheap contracts
 still inspect them every time. Other module assets remain inputs.
+Style lanes additionally bind `.golangci.yml` and actual pinned formatter/linter
+executable contents and build metadata. Both `validate` and `quality-gate` require
+style success; commit/PR orchestration cannot substitute unit-test evidence for it.
+The source policy matches the game's strict rules without its inherited-debt cutoff
+or game-specific exclusions. Production test exclusions are explicit in LINTING.md.
 Each lane has a nonblocking exclusive lock, invalidates stale proof before execution,
 and rechecks inputs before recording success. `plan` explains run/reuse without
 creating results. Native listening is not part of controlled-transport lanes.
@@ -87,6 +106,8 @@ missing package completions remain errors.
 
 `make provision` (or the checker's explicit `provision` operation) enables ordinary
 network dependency provisioning for selected modules and their isolated consumers.
+It resolves production and test import closures so lazy module downloads cannot
+leave source-archive checksums absent from the next readonly/offline run.
 It uses the same consumer layout and creates no validation proof. Normal validation
 never provisions dependencies. Tool builds write to their own module-root `bin/`.
 Git, source inventory, lane fingerprints and isolated copies exclude only that

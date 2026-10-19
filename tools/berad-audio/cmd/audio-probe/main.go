@@ -17,23 +17,31 @@ import (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	if err := run(ctx, os.Args[1:], os.Stdout); err != nil {
+	if err := runWithSignals(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
+func runWithSignals() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	return run(ctx, os.Args[1:], os.Stdout)
+}
+
 func run(ctx context.Context, arguments []string, output io.Writer) error {
+	const defaultProbeDuration = 2 * time.Second
+	const probeGain = 0.2
 	flags := flag.NewFlagSet("audio-probe", flag.ContinueOnError)
 	file := flags.String("file", "", "Explicit WAV, MP3 or OGG source path")
 	check := flags.Bool("check", false, "Analyze without opening a native device")
-	duration := flags.Duration("duration", 2*time.Second, "Native probe duration (positive, at most 1m)")
+	duration := flags.Duration("duration", defaultProbeDuration, "Native probe duration (positive, at most 1m)")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
+
 		return fmt.Errorf("parse probe options: %w", err)
 	}
 	if *file == "" || flags.NArg() != 0 || *duration <= 0 || *duration > time.Minute {
@@ -41,15 +49,14 @@ func run(ctx context.Context, arguments []string, output io.Writer) error {
 	}
 	clip, err := authoring.LoadRecordingContext(ctx, *file, ebitengine.Decode)
 	if err != nil {
-		return err
+		return fmt.Errorf("load probe recording: %w", err)
 	}
 	if *check {
-		_, err := fmt.Fprintf(output, "Playable source: %d ms; SHA256 %s (listening review is separate)\n", clip.DurationMs(), clip.Fingerprint())
-		return err
+		return reportAnalysis(output, clip)
 	}
 	voice := audition.NewVoice()
-	if err := voice.Play(clip, nil, false, 0.2); err != nil {
-		return err
+	if err := voice.Play(clip, nil, false, probeGain); err != nil {
+		return fmt.Errorf("start probe voice: %w", err)
 	}
 	timer := time.NewTimer(*duration)
 	defer timer.Stop()
@@ -66,5 +73,19 @@ func run(ctx context.Context, arguments []string, output io.Writer) error {
 		return fmt.Errorf("%w: native playback did not advance", audition.ErrInvalidVoice)
 	}
 	_, err = fmt.Fprintf(output, "Standalone playback advanced to %d ms\n", position)
-	return err
+	if err != nil {
+		return fmt.Errorf("report probe completion: %w", err)
+	}
+
+	return nil
+}
+
+func reportAnalysis(output io.Writer, clip *authoring.RecordingAudio) error {
+	_, err := fmt.Fprintf(output, "Playable source: %d ms; SHA256 %s (listening review is separate)\n",
+		clip.DurationMs(), clip.Fingerprint())
+	if err != nil {
+		return fmt.Errorf("report recording analysis: %w", err)
+	}
+
+	return nil
 }

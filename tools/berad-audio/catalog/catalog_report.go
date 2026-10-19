@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-// GenerationGuide is a table-first projection of the authored manifest and code
-// evidence. Export never writes back to the manifest or erases manual entries.
+// ReportOptions supplies display labels and reload guidance for generated output.
 type ReportOptions struct{ ManifestLabel, AssetRootLabel, ReloadNotice string }
 
+// GenerationGuide is a table-first projection; it never writes to the authored manifest.
 func (catalog *Catalog) GenerationGuide(options ReportOptions) string {
 	var out strings.Builder
 	out.WriteString("# Audio library and generation guide\n\n")
@@ -30,7 +30,8 @@ func (catalog *Catalog) GenerationGuide(options ReportOptions) string {
 		options.AssetRootLabel = "the configured asset root"
 	}
 	out.WriteString("Edit **" + tableCell(options.ManifestLabel) + "**, not this generated report. ")
-	out.WriteString("For an empty slot, set its recording file to an exact path relative to " + tableCell(options.AssetRootLabel) + ". " + tableCell(options.ReloadNotice) + " ")
+	out.WriteString("For an empty slot, set its recording file to an exact path relative to " +
+		tableCell(options.AssetRootLabel) + ". " + tableCell(options.ReloadNotice) + " ")
 	out.WriteString("To replace a shared recording for only one cue, add a new recording ID ")
 	out.WriteString("and change that cue's `recordingId`.\n\n")
 	out.WriteString("**How to hear it** describes the intended route; ")
@@ -97,14 +98,14 @@ func (catalog *Catalog) writeCoverageSummary(out *strings.Builder) {
 func (catalog *Catalog) writeSFXTables(out *strings.Builder) {
 	families := []string{}
 	for _, moment := range catalog.Moments {
-		if moment.Category == "sfx" && !slices.Contains(families, moment.Family) {
+		if moment.Category == catalogSFX && !slices.Contains(families, moment.Family) {
 			families = append(families, moment.Family)
 		}
 	}
 	slices.Sort(families)
 	for _, family := range families {
 		writeMomentTable(out, "SFX — "+family, catalog.filteredMoments(func(moment CatalogMoment) bool {
-			return moment.Category == "sfx" && moment.Family == family
+			return moment.Category == catalogSFX && moment.Family == family
 		}))
 	}
 }
@@ -151,7 +152,8 @@ func writeMomentTable(out *strings.Builder, title string, moments []CatalogMomen
 		}
 		classification := tableCell(moment.Family)
 		if moment.Phase != "" {
-			classification += " · " + tableCell(moment.Phase) + "/" + tableCell(moment.Outcome) + " · " + tableCell(moment.MixRole)
+			classification += " · " + tableCell(moment.Phase) + "/" + tableCell(moment.Outcome) +
+				" · " + tableCell(moment.MixRole)
 		}
 		if len(moment.AssignedFamilies) > 0 && !slices.Contains(moment.AssignedFamilies, moment.Family) {
 			classification += "<br>Review assigned family: " + tableCell(strings.Join(moment.AssignedFamilies, ", "))
@@ -269,7 +271,8 @@ func (catalog *Catalog) writeRecordingBriefs(out *strings.Builder) {
 		}
 		out.WriteString("<a id=\"" + briefAnchor(moment.ID) + "\"></a>\n\n")
 		out.WriteString("### " + tableCell(moment.Name) + "\n\n")
-		out.WriteString("Cue: <code>" + tableCell(moment.ID) + "</code> · Recording slots: <code>" + tableCell(strings.Join(moment.recordingIDs(), ", ")) + "</code>\n\n")
+		out.WriteString("Cue: <code>" + tableCell(moment.ID) + "</code> · Recording slots: <code>" +
+			tableCell(strings.Join(moment.recordingIDs(), ", ")) + "</code>\n\n")
 		out.WriteString(tableCell(moment.GenerationBrief) + "\n\n")
 		if moment.Note != "" {
 			out.WriteString(tableCell(moment.Note) + "\n\n")
@@ -277,13 +280,14 @@ func (catalog *Catalog) writeRecordingBriefs(out *strings.Builder) {
 	}
 }
 
-func briefAnchor(id string) string {
+func briefAnchor(identity string) string {
 	return "brief-" + strings.Map(func(character rune) rune {
 		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' {
 			return character
 		}
+
 		return '-'
-	}, strings.ToLower(id))
+	}, strings.ToLower(identity))
 }
 
 func tableCell(text string) string {

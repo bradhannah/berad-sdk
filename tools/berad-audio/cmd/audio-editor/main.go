@@ -29,7 +29,8 @@ func run(arguments []string, output io.Writer, launch func(*authoring.LibraryEdi
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
-		return err
+
+		return fmt.Errorf("parse editor options: %w", err)
 	}
 	if flags.NArg() != 0 || (*manifest == "") == (*descriptor == "") {
 		return fmt.Errorf("%w: choose exactly one -library or -project", authoring.ErrLibrary)
@@ -43,14 +44,19 @@ func run(arguments []string, output io.Writer, launch func(*authoring.LibraryEdi
 		doc, options, err = project.OpenLibrary(*manifest)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("open editor project: %w", err)
 	}
 	if *check {
 		if err := doc.Validate(); err != nil {
-			return err
+			return fmt.Errorf("validate editor project: %w", err)
 		}
 		_, err = fmt.Fprintf(output, "Valid library: %d recordings, %d cues\n", len(doc.RecordingIDs()), len(doc.CueIDs()))
-		return err
+		if err != nil {
+			return fmt.Errorf("report editor validation: %w", err)
+		}
+
+		return nil
 	}
+
 	return launch(doc, options)
 }

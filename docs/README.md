@@ -14,6 +14,7 @@ Every retained Markdown document beneath `docs/` is cataloged exactly once:
 | [API_DESIGN.md](API_DESIGN.md) | SDK architecture | Public boundaries, ownership, and dependency exposure |
 | [COMPATIBILITY.md](COMPATIBILITY.md) | SDK maintenance | Versioning and coordinated consumer evolution |
 | [VALIDATION.md](VALIDATION.md) | SDK tooling | Actual foundation checks and module-onboarding requirements |
+| [LINTING.md](LINTING.md) | SDK engineering | Mandatory pinned formatting/lint, complete inventory, exceptions and zero-findings acceptance |
 | [LICENSING.md](LICENSING.md) | SDK maintenance | Commercial-use and transferred-asset/source policy |
 | [EXTRACTION_GUIDE.md](EXTRACTION_GUIDE.md) | SDK architecture | Conversion workflow and review checkpoints |
 | [adr/0001-sdk-family-foundation.md](adr/0001-sdk-family-foundation.md) | SDK architecture | Accepted family structure and trade-offs |
@@ -26,7 +27,8 @@ Every retained Markdown document beneath `docs/` is cataloged exactly once:
 ## Requirement language
 
 System documentation is maintained with its implementation:
-[audio runtime/authoring catalog](../modules/berad-audio/docs/README.md) and
+[audio runtime/authoring catalog](../modules/berad-audio/docs/README.md),
+[text API catalog](../modules/berad-text/docs/README.md), and
 [audio tools catalog](../tools/berad-audio/docs/README.md). The SDK-owned public
 skills route to these contracts; consumer integration guides own application policy.
 

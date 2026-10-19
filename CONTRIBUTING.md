@@ -11,15 +11,22 @@ a PR for human review. Describe affected contracts, consumers, licensing, select
 validation, reused results, and any explicit limitations. Private orchestration
 is not a contributor prerequisite.
 
-The foundation requires Python 3.10+. Run:
+Validation requires Python 3.10+, the registered Go toolchain/dependencies and
+the pinned formatter/linter. Provision tools explicitly with `make tools` and
+dependencies with `make provision`, then use the offline Make targets:
 
 ```sh
-python3 -I -B scripts/check.py plan
-python3 -I -B scripts/check.py quality-gate
+make plan
+make format-check
+make lint
+make quality-gate
 ```
 
-See [validation](docs/VALIDATION.md) before adding a module or check. Checks run
-locally without downloads; provision any future module dependencies separately.
+See [strict linting](docs/LINTING.md) and [validation](docs/VALIDATION.md) before
+adding a module or check. Every registered runtime/tool must have zero full-source
+findings; no changed-line baseline hides inherited debt. Begin cleanup with a
+reviewed `make lint-fix MODULE=...` pass, then address remaining findings manually.
+Checks run locally without downloads; provision dependencies separately.
 No hosted CI workflow is configured by this foundation.
 
 Contributed project-authored code and documentation use the repository's

@@ -45,6 +45,7 @@ func (e *LibraryEditor) ImportRecordingSource(recordingID string, clip *Recordin
 
 		return e.importSourceLocked(recordingID, clip)
 	}
+
 	return errors.Join(operation(), unlock())
 }
 
@@ -60,16 +61,9 @@ func (e *LibraryEditor) importSourceLocked(recordingID string, clip *RecordingAu
 	relative = filepath.ToSlash(relative)
 	copySource := !e.importPathAllowed(relative)
 	if copySource {
-		if e.importDestination != nil {
-			relative, err = e.importDestination(recordingID, cloneAudioValue(previous), clip.Path(), clip.Fingerprint())
-			if err != nil {
-				return fmt.Errorf("choose import destination: %w", err)
-			}
-		} else {
-			relative = importRelativePath(recordingID, previous, clip)
-			if e.importDirectory != "" {
-				relative = e.importDirectory + "/" + filepath.Base(relative)
-			}
+		relative, err = e.chooseImportDestination(recordingID, previous, clip)
+		if err != nil {
+			return err
 		}
 	}
 	if !validAssetPath(relative) {
@@ -108,6 +102,25 @@ func (e *LibraryEditor) importSourceLocked(recordingID string, clip *RecordingAu
 	return nil
 }
 
+func (e *LibraryEditor) chooseImportDestination(
+	recordingID string, previous Recording, clip *RecordingAudio,
+) (string, error) {
+	if e.importDestination != nil {
+		path, err := e.importDestination(recordingID, cloneAudioValue(previous), clip.Path(), clip.Fingerprint())
+		if err != nil {
+			return "", fmt.Errorf("choose import destination: %w", err)
+		}
+
+		return path, nil
+	}
+	relative := importRelativePath(recordingID, clip)
+	if e.importDirectory != "" {
+		relative = e.importDirectory + "/" + filepath.Base(relative)
+	}
+
+	return relative, nil
+}
+
 func (e *LibraryEditor) importReplacement(
 	recordingID string, previous Recording, relative string, clip *RecordingAudio,
 ) (Recording, error) {
@@ -127,7 +140,8 @@ func (e *LibraryEditor) importReplacement(
 	// Manual overrides belong to the recording identity and survive replacement.
 	// Auto-managed replacements are measured before publishing the single edit.
 	if replacement.CalibrationMode() == CalibrationAuto {
-		suggestion, err := clip.SuggestCalibration(nil, e.calibrationOptions(e.RecordingFamily(recordingID), replacement.CalibrationTargetDB))
+		options := e.calibrationOptions(e.RecordingFamily(recordingID), replacement.CalibrationTargetDB)
+		suggestion, err := clip.SuggestCalibration(nil, options)
 		if err != nil {
 			return Recording{}, err
 		}
@@ -137,7 +151,7 @@ func (e *LibraryEditor) importReplacement(
 	return replacement, nil
 }
 
-func importRelativePath(recordingID string, previous Recording, clip *RecordingAudio) string {
+func importRelativePath(recordingID string, clip *RecordingAudio) string {
 	directory := "imported"
 	hash := sha256.Sum256(clip.data)
 	name := fmt.Sprintf("%s_%x%s", recordingID, hash[:6], strings.ToLower(filepath.Ext(clip.path)))

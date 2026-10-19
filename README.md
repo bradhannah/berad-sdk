@@ -14,11 +14,17 @@ available. **Berad Audio** provides experimental runtime/authoring and separatel
 versioned terminal-editor/catalog/probe tools, with explicit module/consumer checks
 on the `feat/berad-audio` development branch. Consumers
 must pin a remotely available reviewed revision; there are no stable SDK version
-releases. Text and graphics remain planned identities.
+releases. **Berad Text** now has an experimental candidate on `feat/berad-text`,
+with supplied fonts, styled layout/local geometry and native-render consumer
+checks. Graphics remains a planned identity. Pin only actually available revisions.
 Standalone version-qualified tools installation awaits reviewed default-branch
 availability or a separately authorized module tag; pinned Redux game/editor
 installation is verified independently. Neither is native listening acceptance.
 See the [module catalog](modules/README.md).
+For the text demonstration, use `make build-text-demo`, `make text-demo`, or
+`make text-demo-smoke`. The smoke target uses an isolated HOME/working directory,
+an eight-second native startup window, and controlled process cleanup. It requires
+a desktop backend and is separate from physical keyboard/mouse/IME acceptance.
 The [tool catalog](tools/README.md) describes the separately versioned tools layout.
 
 ## Converting an existing subsystem?
@@ -60,6 +66,10 @@ python3 -I -B scripts/check.py validate
 ```
 
 Equivalent Make targets are `make plan`, `make validate`, and `make quality-gate`.
+Provision pinned formatting/lint tools with `make tools`. `make format-check` and
+`make lint` enforce the [strict Go style policy](docs/LINTING.md) across all registered
+runtimes and tools, with zero unfiltered findings required by both final gates.
+Use `make lint-fix MODULE=...` for a reviewed automatic-fix pass before manual cleanup.
 Checks are local and offline. Checker and registered module lanes reuse successful
 results when their inputs match; documentation checks remain inexpensive and run
 every time. See [validation](docs/VALIDATION.md) for exact coverage and limitations.

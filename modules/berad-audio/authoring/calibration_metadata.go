@@ -5,7 +5,10 @@ import (
 	"math"
 )
 
+// CalibrationAuto requests recalibration when the source/family changes.
 const CalibrationAuto = "auto"
+
+// CalibrationManual preserves a user-supplied gain through source replacement.
 const CalibrationManual = "manual"
 
 func (recording libraryRecording) CalibrationMode() string {
@@ -15,25 +18,32 @@ func (recording libraryRecording) CalibrationMode() string {
 	if recording.CalibrationPolicy == CalibrationAuto {
 		return CalibrationAuto
 	}
+
 	return CalibrationManual
 }
 
 func (recording libraryRecording) validateCalibration() error {
 	if value := recording.CalibrationGainDB; value != nil &&
-		(math.IsNaN(*value) || math.IsInf(*value, 0) || *value < calibrationMinGain || *value > calibrationMaxGain) {
+		!finiteRange(*value, calibrationMinGain, calibrationMaxGain) {
 		return fmt.Errorf("%w: calibration gain must be in [-48,12] dB", ErrLibrary)
 	}
-	if recording.CalibrationPolicy != "" && recording.CalibrationPolicy != CalibrationAuto && recording.CalibrationPolicy != CalibrationManual {
+	if recording.CalibrationPolicy != "" && recording.CalibrationPolicy != CalibrationAuto &&
+		recording.CalibrationPolicy != CalibrationManual {
 		return fmt.Errorf("%w: invalid calibration mode", ErrLibrary)
 	}
 	if recording.CalibrationPolicy != "" && recording.CalibrationGainDB == nil {
 		return fmt.Errorf("%w: calibration mode requires a gain", ErrLibrary)
 	}
 	if value := recording.CalibrationTargetDB; value != nil &&
-		(math.IsNaN(*value) || math.IsInf(*value, 0) || *value < calibrationMinTarget || *value > calibrationMaxTarget) {
+		!finiteRange(*value, calibrationMinTarget, calibrationMaxTarget) {
 		return fmt.Errorf("%w: calibration target must be in [-60,-6] dB", ErrLibrary)
 	}
+
 	return nil
+}
+
+func finiteRange(value, minimum, maximum float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= minimum && value <= maximum
 }
 
 func (e *LibraryEditor) calibrationOptions(family string, override *float64) CalibrationOptions {
@@ -41,6 +51,7 @@ func (e *LibraryEditor) calibrationOptions(family string, override *float64) Cal
 	if override != nil {
 		options.TargetDB = *override
 	}
+
 	return options
 }
 
@@ -51,5 +62,6 @@ func (e *LibraryEditor) CalibrationOptionsFor(recordingID string) (CalibrationOp
 	if !exists {
 		return CalibrationOptions{}, fmt.Errorf("%w: unknown recording %s", ErrLibrary, recordingID)
 	}
+
 	return e.calibrationOptions(e.RecordingFamily(recordingID), recording.CalibrationTargetDB), nil
 }

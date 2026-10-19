@@ -30,6 +30,7 @@ func ParseDocument(data []byte, validate LibraryValidator) (LibraryDocument, err
 	if err != nil {
 		return LibraryDocument{}, err
 	}
+
 	return *document, nil
 }
 

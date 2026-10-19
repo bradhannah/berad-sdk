@@ -29,6 +29,7 @@ func publishTemporaryFile(root, pattern string, data []byte, mode os.FileMode, p
 	if failure := errors.Join(err, temporary.Close()); failure != nil {
 		return fmt.Errorf("prepare publication: %w", failure)
 	}
+
 	return publish(path)
 }
 
@@ -36,6 +37,7 @@ func syncDirectory(path string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
+	//nolint:gosec // Explicit validated publication directory; this operation flushes its namespace.
 	directory, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("open directory for sync: %w", err)
@@ -43,5 +45,6 @@ func syncDirectory(path string) error {
 	if failure := errors.Join(directory.Sync(), directory.Close()); failure != nil {
 		return fmt.Errorf("flush publication directory: %w", failure)
 	}
+
 	return nil
 }

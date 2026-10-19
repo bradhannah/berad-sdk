@@ -17,6 +17,8 @@ import (
 )
 
 const catalogMeasurementSampleRate = 44100
+const catalogMillisecondsPerSecond = 1000
+const catalogPCMFrameBytes = 4
 
 func formatName(filename string) string {
 	switch strings.ToLower(path.Ext(filename)) {
@@ -27,7 +29,7 @@ func formatName(filename string) string {
 	case ".ogg":
 		return "OGG"
 	default:
-		return "unknown"
+		return provenanceUnknown
 	}
 }
 
@@ -37,25 +39,14 @@ func InspectAsset(id, path string, files fs.FS, options Options) (CatalogAsset, 
 	asset.ID, asset.Path, asset.Availability = id, options.PathPrefix+path, CatalogPresent
 	asset.Format = formatName(path)
 	asset.ListeningReview, asset.LoopReview = CatalogUnreviewed, CatalogUnreviewed
-	asset.Provenance = RecordingProvenance{OriginalFilename: "unknown", SourceType: "unknown", SourceURL: "unknown", SourceCreator: "unknown", License: "unknown", ImportedFrom: "unknown", Processing: []authoring.ProcessingStep{}}
-	info, err := fs.Stat(files, path)
+	asset.Provenance = RecordingProvenance{
+		OriginalFilename: provenanceUnknown, SourceType: provenanceUnknown, SourceURL: provenanceUnknown,
+		SourceCreator: provenanceUnknown, License: provenanceUnknown, ImportedFrom: provenanceUnknown,
+		Processing: []authoring.ProcessingStep{},
+	}
+	data, err := readAsset(files, path)
 	if err != nil {
-		return asset, fmt.Errorf("inspect recording %s: %w", path, err)
-	}
-	if !info.Mode().IsRegular() || info.Size() > 128<<20 {
-		return asset, fmt.Errorf("%w: bounded regular recording required", ErrAudioCatalog)
-	}
-	file, err := files.Open(path)
-	if err != nil {
-		return asset, fmt.Errorf("read audio recording %s: %w", path, err)
-	}
-	const maxEncodedBytes = 128 << 20
-	data, readErr := io.ReadAll(io.LimitReader(file, maxEncodedBytes+1))
-	if err := errors.Join(readErr, file.Close()); err != nil {
-		return asset, fmt.Errorf("read recording: %w", err)
-	}
-	if len(data) > maxEncodedBytes {
-		return asset, fmt.Errorf("%w: encoded recording exceeds 128 MiB", ErrAudioCatalog)
+		return asset, err
 	}
 	digest := sha256.Sum256(data)
 	asset.SHA256 = hex.EncodeToString(digest[:])
@@ -64,6 +55,7 @@ func InspectAsset(id, path string, files fs.FS, options Options) (CatalogAsset, 
 		if closer, ok := stream.(io.Closer); ok {
 			err = errors.Join(err, closer.Close())
 		}
+
 		return asset, fmt.Errorf("inspect audio recording %s: %w", path, err)
 	}
 	if stream == nil {
@@ -74,12 +66,14 @@ func InspectAsset(id, path string, files fs.FS, options Options) (CatalogAsset, 
 		if closer, ok := stream.(io.Closer); ok {
 			return closer.Close()
 		}
+
 		return nil
 	}
-	if length <= 0 || length%4 != 0 || length > math.MaxInt64/1000 {
-		return asset, errors.Join(fmt.Errorf("%w: recording %s has no finite decoded length", ErrAudioCatalog, path), closeStream())
+	if length <= 0 || length%catalogPCMFrameBytes != 0 || length > math.MaxInt64/catalogMillisecondsPerSecond {
+		return asset, errors.Join(
+			fmt.Errorf("%w: recording %s has no finite decoded length", ErrAudioCatalog, path), closeStream())
 	}
-	asset.DurationMs = length * 1000 / (catalogMeasurementSampleRate * 4)
+	asset.DurationMs = length * catalogMillisecondsPerSecond / (catalogMeasurementSampleRate * catalogPCMFrameBytes)
 	if options.Measure {
 		peak, rms, err := measureCatalogPCM(stream)
 		if err != nil {
@@ -90,6 +84,30 @@ func InspectAsset(id, path string, files fs.FS, options Options) (CatalogAsset, 
 	}
 
 	return asset, closeStream()
+}
+
+func readAsset(files fs.FS, path string) ([]byte, error) {
+	const maxEncodedBytes = 128 << 20
+	info, err := fs.Stat(files, path)
+	if err != nil {
+		return nil, fmt.Errorf("inspect recording %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxEncodedBytes {
+		return nil, fmt.Errorf("%w: bounded regular recording required", ErrAudioCatalog)
+	}
+	file, err := files.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("read audio recording %s: %w", path, err)
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxEncodedBytes+1))
+	if err := errors.Join(readErr, file.Close()); err != nil {
+		return nil, fmt.Errorf("read recording: %w", err)
+	}
+	if len(data) > maxEncodedBytes {
+		return nil, fmt.Errorf("%w: encoded recording exceeds 128 MiB", ErrAudioCatalog)
+	}
+
+	return data, nil
 }
 
 // measureCatalogPCM streams interleaved signed 16-bit PCM. These measurements

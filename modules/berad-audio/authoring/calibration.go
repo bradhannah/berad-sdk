@@ -28,6 +28,7 @@ const (
 // family names. Gated selections under 400 ms fall back to active RMS.
 type CalibrationMethod string
 
+// Supported calibration measurements retain their persisted method identities.
 const (
 	ActiveRMS     CalibrationMethod = "active_rms"
 	GatedLoudness CalibrationMethod = "gated_loudness"
@@ -70,10 +71,10 @@ type loudnessBucket struct {
 func (clip *RecordingAudio) SuggestCalibration(
 	window *PlaybackWindow, options CalibrationOptions,
 ) (CalibrationSuggestion, error) {
-	if math.IsNaN(options.TargetDB) || math.IsInf(options.TargetDB, 0) ||
-		options.TargetDB < calibrationMinTarget || options.TargetDB > calibrationMaxTarget ||
+	if !finiteRange(options.TargetDB, calibrationMinTarget, calibrationMaxTarget) ||
 		(options.Method != ActiveRMS && options.Method != GatedLoudness) {
-		return CalibrationSuggestion{}, fmt.Errorf("%w: calibration needs a known method and target in [-60,-6] dB", ErrLibrary)
+		return CalibrationSuggestion{},
+			fmt.Errorf("%w: calibration needs a known method and target in [-60,-6] dB", ErrLibrary)
 	}
 	start, end := int64(0), clip.durationMs
 	if window != nil {

@@ -47,11 +47,11 @@ func (category previewCategory) label() string {
 func (m *model) cuePreviewCategory(cueID string) previewCategory {
 	if category, exists := m.targets.CueCategories[cueID]; exists {
 		switch category {
-		case "music":
+		case categoryMusic:
 			return previewMusic
-		case "ambient":
+		case categoryAmbient:
 			return previewAmbience
-		case "sfx":
+		case categorySFX:
 			return previewSFX
 		default:
 			panic("validated project has an unknown preview category")
@@ -60,6 +60,7 @@ func (m *model) cuePreviewCategory(cueID string) previewCategory {
 	if _, ambient := m.doc.Routing().Ambient[cueID]; ambient {
 		return previewAmbience
 	}
+
 	return previewSFX
 }
 
@@ -194,7 +195,8 @@ func (m *model) previewVolumeStrip(width int) string {
 	}
 
 	return fit(m.colors.focus.Render(fmt.Sprintf("%s · Music %d/10 · SFX %d/10 · Amb %d/10 · v controls",
-		m.options.MixLabel, m.previewSliders[previewMusic], m.previewSliders[previewSFX], m.previewSliders[previewAmbience])), width)
+		m.options.MixLabel, m.previewSliders[previewMusic], m.previewSliders[previewSFX],
+		m.previewSliders[previewAmbience])), width)
 }
 
 func (m *model) previewVolumeLines(width int) []string {
