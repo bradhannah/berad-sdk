@@ -11,9 +11,11 @@ import "github.com/bradhannah/berad-sdk/modules/berad-audio/backend/ebitengine"
 Development source is on `feat/berad-audio`; there is no stable or tagged release.
 Use a reviewed published commit at the SDK path. Redux's dependency/import cutover
 follows an available SDK revision; no application-local replacement is required.
-Ambient and finite music transports are available; the existing Bubble Tea editor
-is not yet a module API. Source analysis is available in the `authoring` package;
-document editing/persistence is available there too; session/TUI extraction is ongoing.
+Ambient and finite music transports, source analysis and document editing/persistence
+are available. The existing Bubble Tea editor now lives in the independently
+versioned [audio tools module](https://github.com/bradhannah/berad-sdk/tree/9cdfc4b0755f/tools/berad-audio),
+alongside session, catalog and probe services. Redux supplies its project policy
+through a thin launcher and pins published runtime/tools revisions.
 The API is pre-stability; applications should
 pin reviewed revisions once they are available remotely.
 
@@ -224,8 +226,10 @@ facts when a background document result is stale, without replacing newer edits.
 Windows lacks directory-sync acceptance and reports that limit explicitly. Source
 verification/locks coordinate callers but cannot prevent arbitrary external writers.
 
-The TUI/session still lives in Redux until its tools-module cutover. Core authoring
-regressions use generated fixtures; the game retains its integration coverage.
+The TUI/session is tools-owned, while Redux retains its project policies and
+integration coverage. Core and tool regressions use generated project/media fixtures.
+Native terminal/listening and standalone tool-install acceptance remain separate
+from implementation and controlled test proof; no stable release is promised.
 
 ## Finite music transport
 

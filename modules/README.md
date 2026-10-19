@@ -7,7 +7,7 @@ The intended identities are:
 
 | Proposed directory | Intended responsibility | Current availability here |
 | --- | --- | --- |
-| [`berad-audio/`](berad-audio/README.md) | Cue/voice runtime, finite music and ambient reconciliation | Experimental source on `feat/berad-audio`; authoring/TUI extraction remains in progress |
+| [`berad-audio/`](berad-audio/README.md) | Cue/voice runtime, finite music, ambience and shared authoring | Experimental source on `feat/berad-audio`; terminal/catalog tools are a separate tools module |
 | `berad-text/` | Text resources, layout, rendering, and geometry | Not available |
 | `berad-graphics/` | A reviewed set of reusable graphics services | Not available; boundary requires design |
 

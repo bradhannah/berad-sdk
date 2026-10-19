@@ -10,10 +10,14 @@ assets retain their own terms; see [licensing](docs/LICENSING.md).
 ## Current availability
 
 Engineering contracts, conversion guidance, templates and an OpenCode skill are
-available. **Berad Audio** provides an experimental runtime with explicit
-module/consumer checks on the `feat/berad-audio` development branch. Consumers
+available. **Berad Audio** provides experimental runtime/authoring and separately
+versioned terminal-editor/catalog/probe tools, with explicit module/consumer checks
+on the `feat/berad-audio` development branch. Consumers
 must pin a remotely available reviewed revision; there are no stable SDK version
 releases. Text and graphics remain planned identities.
+Standalone version-qualified tools installation awaits reviewed default-branch
+availability or a separately authorized module tag; pinned Redux game/editor
+installation is verified independently. Neither is native listening acceptance.
 See the [module catalog](modules/README.md).
 The [tool catalog](tools/README.md) describes the separately versioned tools layout.
 
