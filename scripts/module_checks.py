@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import shlex
@@ -101,6 +102,13 @@ def tools(root, env):
 
 def fingerprint(root, module, lane, policy, tool_identity, dependencies=()):
     digest = hashlib.sha256(json.dumps([module, lane, policy, tool_identity], sort_keys=True).encode())
+    if any(item.get("execution") == "native-render" for item in (module, *dependencies)):
+        # Render lanes need an actual desktop backend. Bind its selection separately
+        # from Go tool identity; test success is not physical display acceptance.
+        native = {name: os.environ.get(name) for name in (
+            "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_SESSION_TYPE",
+            "EBITENGINE_GRAPHICS_LIBRARY", "EBITENGINE_OPENGL", "CGO_ENABLED")}
+        digest.update(json.dumps([platform.platform(), native], sort_keys=True).encode())
     for selected in (module, *dependencies):
         digest.update(selected["id"].encode())
         directory = root / selected["id"]
@@ -260,6 +268,8 @@ def validate(root, modules, policy, plan=False, selectors=()):
     for module, lane, dependencies in jobs:
         mode = "candidate dependencies" if lane == "candidate" else "published dependency pins"
         print(f"scope: {module['id']} / {lane} / {mode}", flush=True)
+        if module.get("execution") == "native-render":
+            print("execution: native-render (running Ebitengine test harness; desktop required)", flush=True)
         identity = lambda: fingerprint(root, module, lane, policy(), tools(root, env), dependencies)
         execute = lambda: execute_lane(root, module, lane, env, dependencies)
         cached_lane(cache, module["id"].replace("/", "-") + "-" + lane, identity, execute, plan)

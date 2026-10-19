@@ -40,9 +40,18 @@ The SDK's offline checks do not require those OpenCode dependencies.
 Each final run reports executed/reused checks and elapsed time. Documentation edits
 do not invalidate checker regression evidence. Checker/test/configuration changes do.
 An unknown active module or Go source fails until its real validation is registered.
-The current runtime inventory is Berad Audio; it transfers the consumer's API
-scenarios, with only the canonical import path changed. Redux bridge checks remain
+The runtime inventory includes Berad Audio and Berad Text. Audio transfers its
+consumer API scenarios with the canonical import path changed. Redux bridge checks remain
 game-owned and are not dependencies of independent SDK validation.
+
+Berad Text additionally declares `execution: native-render`. Its unit, race and
+independent-consumer lanes start an Ebitengine harness and perform real offscreen
+pixel assertions; an available desktop render backend is required. The backend
+selection/display environment and platform are bound into its reuse identity.
+Failure to start rendering is not a skipped success. Physical display, input/IME
+and untested platforms still require separate observations. Font fixtures come
+from the pinned, licensed x/image Go-font dependency; synthetic bitmap pixels are
+created by tests. No new local go:embed exemption is introduced.
 
 Each module lane binds module files/modes, locks, checker policy, Python runtime,
 Go environment/toolchain implementation, compiler identity and lane selection.

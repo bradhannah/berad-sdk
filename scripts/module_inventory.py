@@ -34,7 +34,9 @@ def normalize(manifest):
             item = {"id": "modules/" + item["name"], "checks": item["checks"], "requires": []}
         elif manifest["schema_version"] != 2:
             raise ValueError("unsupported SDK inventory schema")
-        if (not isinstance(item, dict) or set(item) != {"id", "checks", "requires"}
+        if (not isinstance(item, dict) or set(item) not in ({"id", "checks", "requires"},
+                                                         {"id", "checks", "requires", "execution"})
+                or item.get("execution", "ordinary") not in ("ordinary", "native-render")
                 or not isinstance(item["id"], str) or not re.fullmatch(r"(?:modules|tools)/berad-[a-z]+", item["id"])
                 or not isinstance(item["requires"], list)
                 or any(not isinstance(value, str) for value in item["requires"])

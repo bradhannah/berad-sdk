@@ -8,7 +8,7 @@ The intended identities are:
 | Proposed directory | Intended responsibility | Current availability here |
 | --- | --- | --- |
 | [`berad-audio/`](berad-audio/README.md) | Cue/voice runtime, finite music, ambience and shared authoring | Experimental source on `feat/berad-audio`; terminal/catalog tools are a separate tools module |
-| `berad-text/` | Text resources, layout, rendering, and geometry | Not available |
+| [`berad-text/`](berad-text/README.md) | Supplied immutable fonts, styled layout, local geometry and bounded Ebitengine rendering | Experimental local candidate; independent native-render checks registered; not yet published |
 | `berad-graphics/` | A reviewed set of reusable graphics services | Not available; boundary requires design |
 
 Module paths follow `github.com/bradhannah/berad-sdk/modules/berad-<domain>`.

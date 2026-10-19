@@ -3,6 +3,7 @@
   "stage": "runtime",
   "modules": [
     {"id": "modules/berad-audio", "checks": ["unit", "race", "consumer"], "requires": []},
+    {"id": "modules/berad-text", "checks": ["unit", "race", "consumer"], "requires": [], "execution": "native-render"},
     {"id": "tools/berad-audio", "checks": ["unit", "race", "consumer", "candidate"], "requires": ["modules/berad-audio"]}
   ]
 }

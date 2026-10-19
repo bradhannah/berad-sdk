@@ -14,7 +14,9 @@ available. **Berad Audio** provides experimental runtime/authoring and separatel
 versioned terminal-editor/catalog/probe tools, with explicit module/consumer checks
 on the `feat/berad-audio` development branch. Consumers
 must pin a remotely available reviewed revision; there are no stable SDK version
-releases. Text and graphics remain planned identities.
+releases. **Berad Text** now has an experimental candidate on `feat/berad-text`,
+with supplied fonts, styled layout/local geometry and native-render consumer
+checks. Graphics remains a planned identity. Pin only actually available revisions.
 Standalone version-qualified tools installation awaits reviewed default-branch
 availability or a separately authorized module tag; pinned Redux game/editor
 installation is verified independently. Neither is native listening acceptance.

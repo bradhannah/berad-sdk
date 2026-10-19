@@ -203,6 +203,19 @@ class ModuleChecksTests(unittest.TestCase):
             {"name": "berad-audio", "checks": list(checks.INVENTORY.BASE_LANES)}]}
         self.assertEqual(checks.INVENTORY.normalize(manifest), [self.module])
 
+    def test_native_render_execution_is_registered_and_binds_backend_environment(self):
+        module = dict(self.module, execution="native-render")
+        manifest = {"schema_version": 2, "stage": "runtime", "modules": [module]}
+        self.assertEqual(checks.INVENTORY.normalize(manifest), [module])
+        identity = lambda: checks.fingerprint(self.root, module, "unit", "policy", "tools")
+        with patch.dict(checks.os.environ, {"EBITENGINE_GRAPHICS_LIBRARY": "opengl"}):
+            first = identity()
+        with patch.dict(checks.os.environ, {"EBITENGINE_GRAPHICS_LIBRARY": "metal"}):
+            self.assertNotEqual(first, identity())
+        module["execution"] = "silently-skip-rendering"
+        with self.assertRaises(ValueError):
+            checks.INVENTORY.normalize(manifest)
+
 
 if __name__ == "__main__":
     unittest.main()
