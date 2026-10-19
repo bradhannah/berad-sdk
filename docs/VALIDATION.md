@@ -45,7 +45,7 @@ The SDK's offline checks do not require those OpenCode dependencies.
 Each final run reports executed/reused checks and elapsed time. Documentation edits
 do not invalidate checker regression evidence. Checker/test/configuration changes do.
 An unknown active module or Go source fails until its real validation is registered.
-The runtime inventory includes Berad Audio and Berad Text. Audio transfers its
+The runtime inventory includes Berad Audio, Berad Text and Berad Graphics. Audio transfers its
 consumer API scenarios with the canonical import path changed. Redux bridge checks remain
 game-owned and are not dependencies of independent SDK validation.
 
@@ -57,6 +57,14 @@ Failure to start rendering is not a skipped success. Physical display, input/IME
 and untested platforms still require separate observations. Font fixtures come
 from the pinned, licensed x/image Go-font dependency; synthetic bitmap pixels are
 created by tests. No new local go:embed exemption is introduced.
+
+Berad Graphics uses the same declared `native-render` lane for backend and consumer
+pixel assertions. Its root CPU image/mask/frame package itself requires no display.
+Synthetic media exercises non-square/nonzero-origin images, procedural sampling,
+partial alpha, additive channels, clipped/fractional mask draws, immutable borrows,
+cache eviction and explicit invalidation. `make graphics-demo-smoke` separately
+starts the atelier example for eight seconds; it is bounded startup evidence, not
+manual visual acceptance or validation of another game's assets.
 
 Each module lane binds module files/modes, locks, checker policy, Python runtime,
 Go environment/toolchain implementation, compiler identity and lane selection.

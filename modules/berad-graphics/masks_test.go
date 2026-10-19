@@ -117,3 +117,32 @@ func TestBayerCoverageAndAnimationEndpoints(t *testing.T) {
 		t.Fatal("zero interval")
 	}
 }
+
+func TestDitherPatternPhasesAndStrictThresholds(t *testing.T) {
+	bayer := [4][4]uint16{{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}}
+	for coverage := uint16(0); coverage <= 4096; coverage++ {
+		for y := range 4 {
+			for x := range 4 {
+				want := coverage > (2*bayer[y][x]+1)*128
+				for _, offset := range [][2]int{{0, 0}, {-20, -16}, {16, 20}, {-256, 256}} {
+					if graphics.DitherKeeps(coverage, x+offset[0], y+offset[1]) != want {
+						t.Fatalf("phase/wrap/strict-threshold mismatch: coverage=%d coordinate=(%d,%d)",
+							coverage, x+offset[0], y+offset[1])
+					}
+				}
+			}
+		}
+	}
+	for _, coordinate := range []int{math.MinInt, math.MaxInt, -1, 0, 1} {
+		phase := ((coordinate % 4) + 4) % 4
+		if graphics.DitherKeeps(2000, coordinate, coordinate) != graphics.DitherKeeps(2000, phase, phase) {
+			t.Fatal("extreme coordinate did not wrap")
+		}
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("invalid Q12 coverage accepted")
+		}
+	}()
+	graphics.DitherKeeps(4097, 0, 0)
+}
