@@ -12,11 +12,13 @@ assets retain their own terms; see [licensing](docs/LICENSING.md).
 Engineering contracts, conversion guidance, templates and an OpenCode skill are
 available. **Berad Audio** provides experimental runtime/authoring and separately
 versioned terminal-editor/catalog/probe tools, with explicit module/consumer checks
-on the `feat/berad-audio` development branch. Consumers
+on `main`. Consumers
 must pin a remotely available reviewed revision; there are no stable SDK version
-releases. **Berad Text** now has an experimental candidate on `feat/berad-text`,
+releases. **Berad Text** is also available on `main`,
 with supplied fonts, styled layout/local geometry and native-render consumer
-checks. Graphics remains a planned identity. Pin only actually available revisions.
+checks. **Berad Graphics** has an experimental candidate on `feat/berad-graphics`,
+with supplied images, procedural effects, masks and explicit Ebitengine resource
+ownership. Pin only actually available reviewed revisions.
 Standalone version-qualified tools installation awaits reviewed default-branch
 availability or a separately authorized module tag; pinned Redux game/editor
 installation is verified independently. Neither is native listening acceptance.
@@ -26,6 +28,8 @@ For the text demonstration, use `make build-text-demo`, `make text-demo`, or
 an eight-second native startup window, and controlled process cleanup. It requires
 a desktop backend and is separate from physical keyboard/mouse/IME acceptance.
 The [tool catalog](tools/README.md) describes the separately versioned tools layout.
+Use `make graphics-check`, `make graphics-demo`, and `make graphics-demo-smoke`
+for the graphics candidate and its synthetic independent atelier example.
 
 ## Converting an existing subsystem?
 
@@ -43,6 +47,8 @@ OpenCode users can load the public
 [`berad-sdk-development` skill](.opencode/skill/berad-sdk-development/SKILL.md).
 Audio work also uses the SDK-owned
 [`berad-audio-development` skill](.opencode/skill/berad-audio-development/SKILL.md).
+Graphics work uses
+[`berad-graphics-development`](.opencode/skill/berad-graphics-development/SKILL.md).
 Other agents and human contributors can follow the same linked documents directly.
 No private checkout, service, or original game installation is required.
 

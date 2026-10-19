@@ -1,0 +1,148 @@
+package graphics_test
+
+import (
+	"bytes"
+	"image"
+	"math"
+	"math/rand/v2"
+	"testing"
+
+	graphics "github.com/bradhannah/berad-sdk/modules/berad-graphics"
+)
+
+type countedRandom struct {
+	calls  int
+	random *rand.Rand
+}
+
+func (random *countedRandom) Intn(n int) int { random.calls++; return random.random.IntN(n) }
+
+func TestDissolveReversalResetAndRandomOwnership(t *testing.T) {
+	random := &countedRandom{random: rand.New(rand.NewPCG(1, 2))}
+	dissolve, err := graphics.NewDissolve(7, 23, false, random)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if random.calls != 160 {
+		t.Fatal("unexpected shuffle consumption")
+	}
+	_, err = dissolve.Update(.4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := dissolve.Pixels()
+	dissolve.Update(1)
+	dissolve.Update(.4)
+	if !bytes.Equal(first, dissolve.Pixels()) {
+		t.Fatal("reverse did not restore coverage")
+	}
+	dissolve.Reset()
+	dissolve.Update(.4)
+	if !bytes.Equal(first, dissolve.Pixels()) || random.calls != 160 {
+		t.Fatal("reset reshuffled")
+	}
+	if _, err := dissolve.Update(math.NaN()); err == nil || !bytes.Equal(first, dissolve.Pixels()) {
+		t.Fatal("NaN mutated dissolve")
+	}
+	visited := 0
+	dissolve.VisitLeading(.1, func(image.Point) { visited++ })
+	if visited != 16 {
+		t.Fatal("leading cells", visited)
+	}
+	for index := 0; index < len(first); index += 4 {
+		if first[index] != first[index+3] {
+			t.Fatal("invalid premultiplied mask")
+		}
+	}
+}
+
+func TestDissolveIncrementalBufferMatchesDetachedCoverage(t *testing.T) {
+	random := &countedRandom{random: rand.New(rand.NewPCG(7, 8))}
+	pattern, err := graphics.NewDissolve(7, 9, true, random)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buffer := pattern.Pixels()
+	for _, progress := range []float64{.1, .1, .7, 1, .2, 0} {
+		before := append([]byte(nil), buffer...)
+		_, changed, err := pattern.UpdatePixels(progress, buffer)
+		if err != nil || !bytes.Equal(buffer, pattern.Pixels()) || changed == bytes.Equal(before, buffer) {
+			t.Fatal("incremental update", progress, changed, err)
+		}
+	}
+}
+
+func TestBayerCoverageAndAnimationEndpoints(t *testing.T) {
+	for _, tc := range []struct {
+		tick, offset int64
+		want         int
+	}{{-1, 0, 15}, {math.MaxInt64, math.MaxInt64, 14}, {math.MinInt64, 0, 0}} {
+		index, err := graphics.CycleIndex(16, tc.tick, tc.offset)
+		if err != nil || index != tc.want {
+			t.Fatalf("cycle %+v: %d %v", tc, index, err)
+		}
+	}
+	if _, err := graphics.CycleIndex(0, 0, 0); err == nil {
+		t.Fatal("empty cycle accepted")
+	}
+	for _, origin := range []image.Point{{}, {X: -4, Y: -8}} {
+		kept := 0
+		for y := 0; y < 4; y++ {
+			for x := 0; x < 4; x++ {
+				if graphics.DitherKeeps(graphics.CoverageFull/2, x+origin.X, y+origin.Y) {
+					kept++
+				}
+			}
+		}
+		if kept != 8 {
+			t.Fatal("Bayer half coverage", kept)
+		}
+	}
+	source := imageOf(t, 1, 1, []byte{10, 20, 30, 255})
+	first, _ := graphics.NewFrame(source, image.Pt(4, 7), image.Pt(1, 2), image.Pt(2, 6))
+	second, _ := first.Pad(graphics.Insets{Left: 1})
+	frames := []graphics.Frame{first, second}
+	animation, err := graphics.NewAnimation(frames, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frames[0] = second
+	if animation.At(0).Image() != source || animation.At(99).Image() != source || animation.At(100).Image() != second.Image() || animation.At(-1).Image() != second.Image() || animation.At(200).Image() != source {
+		t.Fatal("frame endpoints or snapshot")
+	}
+	if _, err := graphics.NewAnimation(nil, 100); err == nil {
+		t.Fatal("empty frames")
+	}
+	if _, err := graphics.NewAnimation(frames, 0); err == nil {
+		t.Fatal("zero interval")
+	}
+}
+
+func TestDitherPatternPhasesAndStrictThresholds(t *testing.T) {
+	bayer := [4][4]uint16{{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}}
+	for coverage := uint16(0); coverage <= 4096; coverage++ {
+		for y := range 4 {
+			for x := range 4 {
+				want := coverage > (2*bayer[y][x]+1)*128
+				for _, offset := range [][2]int{{0, 0}, {-20, -16}, {16, 20}, {-256, 256}} {
+					if graphics.DitherKeeps(coverage, x+offset[0], y+offset[1]) != want {
+						t.Fatalf("phase/wrap/strict-threshold mismatch: coverage=%d coordinate=(%d,%d)",
+							coverage, x+offset[0], y+offset[1])
+					}
+				}
+			}
+		}
+	}
+	for _, coordinate := range []int{math.MinInt, math.MaxInt, -1, 0, 1} {
+		phase := ((coordinate % 4) + 4) % 4
+		if graphics.DitherKeeps(2000, coordinate, coordinate) != graphics.DitherKeeps(2000, phase, phase) {
+			t.Fatal("extreme coordinate did not wrap")
+		}
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("invalid Q12 coverage accepted")
+		}
+	}()
+	graphics.DitherKeeps(4097, 0, 0)
+}
