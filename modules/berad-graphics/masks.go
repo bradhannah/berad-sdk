@@ -81,26 +81,54 @@ func (dissolve *Dissolve) Reset() {
 
 // Update clamps finite progress to [0,1], supports reversal and reports completion.
 func (dissolve *Dissolve) Update(progress float64) (bool, error) {
+	complete, _, err := dissolve.update(progress, nil)
+
+	return complete, err
+}
+
+// UpdatePixels updates only changed cells in an already initialized caller buffer.
+// Initialize with WritePixels, and do so again after Reset. It reports completion
+// and whether coverage changed so owners can avoid redundant GPU uploads.
+func (dissolve *Dissolve) UpdatePixels(progress float64, destination []byte) (bool, bool, error) {
+	if len(destination) != len(dissolve.coverage)*channels {
+		return false, false, fmt.Errorf("%w: dissolve buffer size", ErrInvalid)
+	}
+
+	return dissolve.update(progress, destination)
+}
+
+func (dissolve *Dissolve) update(progress float64, destination []byte) (bool, bool, error) {
 	if !finite(progress) {
-		return false, fmt.Errorf("%w: nonfinite dissolve progress", ErrInvalid)
+		return false, false, fmt.Errorf("%w: nonfinite dissolve progress", ErrInvalid)
 	}
 	target := int(float64(len(dissolve.order)) * min(max(progress, 0), 1))
+	changed := target != dissolve.current
 	value := byte(channelMaximum)
 	if dissolve.hide {
 		value = 0
 	}
 	for dissolve.current < target {
 		point := dissolve.order[dissolve.current]
-		dissolve.coverage[point.Y*dissolve.width+point.X] = value
+		dissolve.setCell(point, value, destination)
 		dissolve.current++
 	}
 	for dissolve.current > target {
 		dissolve.current--
 		point := dissolve.order[dissolve.current]
-		dissolve.coverage[point.Y*dissolve.width+point.X] = channelMaximum - value
+		dissolve.setCell(point, channelMaximum-value, destination)
 	}
 
-	return dissolve.current == len(dissolve.order), nil
+	return dissolve.current == len(dissolve.order), changed, nil
+}
+
+func (dissolve *Dissolve) setCell(point image.Point, value byte, destination []byte) {
+	index := point.Y*dissolve.width + point.X
+	dissolve.coverage[index] = value
+	if destination != nil {
+		for channel := range channels {
+			destination[index*channels+channel] = value
+		}
+	}
 }
 
 // Pixels returns detached premultiplied white/transparent RGBA retention pixels.

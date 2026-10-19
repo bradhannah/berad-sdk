@@ -114,6 +114,10 @@ func TestOutlineAndBodyFreeContourHaveIndependentPixelOracles(t *testing.T) {
 	if apply(t, source, graphics.CheckerOutline(face, backing, 0)).CopyRGBA().RGBAAt(2, 1) != backing {
 		t.Fatal("checker phase")
 	}
+	checker := apply(t, source, graphics.CheckerOutline(face, backing, 1)).CopyRGBA()
+	if checker.RGBAAt(2, 1) != face || checker.RGBAAt(3, 2) != (color.RGBA{R: 40, A: 80}) {
+		t.Fatal("alternate checker/body preservation")
+	}
 	if source.Silhouette(0).CopyRGBA().RGBAAt(3, 2) != (color.RGBA{255, 255, 255, 255}) {
 		t.Fatal("silhouette depends on RGB")
 	}

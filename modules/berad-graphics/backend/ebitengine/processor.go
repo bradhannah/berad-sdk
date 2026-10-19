@@ -44,6 +44,7 @@ type derivedKey struct {
 	count      int
 	silhouette bool
 	threshold  byte
+	padding    graphics.Insets
 }
 
 type derivedEntry struct {
@@ -160,6 +161,25 @@ func (processor *Processor) Derive(source *ebiten.Image, operations ...graphics.
 	return processor.DeriveImage(snapshot, operations...)
 }
 
+// PadAndDerive includes explicit padding in cache identity before applying effects.
+// Sources and returned images follow the same read-only borrowing contract as Derive.
+func (processor *Processor) PadAndDerive(
+	source *ebiten.Image, padding graphics.Insets, operations ...graphics.Operation,
+) (*ebiten.Image, error) {
+	snapshot, err := processor.Snapshot(source)
+	if err != nil {
+		return nil, err
+	}
+	if len(operations) > maximumOperations {
+		return nil, fmt.Errorf("%w: operation limit", graphics.ErrInvalid)
+	}
+	var key derivedKey
+	key.source, key.padding, key.count = snapshot, padding, len(operations)
+	copy(key.operations[:], operations)
+
+	return processor.result(key)
+}
+
 // DeriveImage uses a frozen CPU source and the full ordered operation specification.
 func (processor *Processor) DeriveImage(
 	source *graphics.Image, operations ...graphics.Operation,
@@ -197,7 +217,16 @@ func (processor *Processor) result(key derivedKey) (*ebiten.Image, error) {
 		return cached.image, nil
 	}
 	processor.stats.Misses++
-	result, err := key.source.Apply(key.operations[:key.count]...)
+	prepared := key.source
+	var noPadding graphics.Insets
+	if key.padding != noPadding {
+		var err error
+		prepared, err = prepared.Pad(key.padding)
+		if err != nil {
+			return nil, fmt.Errorf("prepare padded image: %w", err)
+		}
+	}
+	result, err := prepared.Apply(key.operations[:key.count]...)
 	if err != nil {
 		return nil, fmt.Errorf("derive image: %w", err)
 	}

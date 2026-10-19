@@ -56,6 +56,22 @@ func TestDissolveReversalResetAndRandomOwnership(t *testing.T) {
 	}
 }
 
+func TestDissolveIncrementalBufferMatchesDetachedCoverage(t *testing.T) {
+	random := &countedRandom{random: rand.New(rand.NewPCG(7, 8))}
+	pattern, err := graphics.NewDissolve(7, 9, true, random)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buffer := pattern.Pixels()
+	for _, progress := range []float64{.1, .1, .7, 1, .2, 0} {
+		before := append([]byte(nil), buffer...)
+		_, changed, err := pattern.UpdatePixels(progress, buffer)
+		if err != nil || !bytes.Equal(buffer, pattern.Pixels()) || changed == bytes.Equal(before, buffer) {
+			t.Fatal("incremental update", progress, changed, err)
+		}
+	}
+}
+
 func TestBayerCoverageAndAnimationEndpoints(t *testing.T) {
 	for _, tc := range []struct {
 		tick, offset int64

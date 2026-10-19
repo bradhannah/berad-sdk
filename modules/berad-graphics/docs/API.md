@@ -10,6 +10,9 @@ Frame offsets/anchors are bounded to +/-2^30 pixels; uniform animation definitio
 have at most 65536 frames and a nonoverflowing positive millisecond period.
 `CycleIndex` separately samples integer ticks, allowing host clocks to retain
 their own conversion/rounding policy without overflowing tick-plus-offset.
+`Dissolve.UpdatePixels` updates only changed cells in an initialized caller buffer;
+its changed flag lets the host avoid redundant uploads. Reset requires a fresh
+`WritePixels` into that buffer. No updates or resets consume additional randomness.
 
 Operations execute in order. Selectors choose destination writes, not admissible
 source samples. Scroll wraps with positive modulo; wave/rise clamp samples to the
@@ -51,6 +54,11 @@ sources are borrowed immutable images. After host mutation, invalidate their
 snapshot before reuse. CPU imports instead own copies from the start. Both source
 snapshots and derived images have bounded cache retention. Keys retain complete
 source/operation identities, not hashed raw pointer addresses or quantized values.
+`PadAndDerive` includes padding in that same exact identity before effects execute.
+`ImageCache` separately retains host-created variants under explicit collision-free
+scope keys. Hosts own those keys' meaning; entry/byte limits apply without interpreting
+game identities. Oversized replacement bypass removes the old entry rather than
+returning stale artwork, and invalid replacement leaves the prior entry intact.
 
 Derived GPU images returned to existing host draw code are read-only borrows.
 Eviction/processor closure drops cache references, never invalidates a retained
