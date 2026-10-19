@@ -3,10 +3,26 @@ GO ?= go
 MODULE ?=
 SELECT_MODULE = $(if $(MODULE),--module $(MODULE),)
 TEXT_DEMO_BIN = .cache/bin/berad-text-demo$(if $(filter Windows_NT,$(OS)),.exe,)
+GRAPHICS_DEMO_BIN = .cache/bin/berad-graphics-demo$(if $(filter Windows_NT,$(OS)),.exe,)
 .DEFAULT_GOAL := plan
 
 .PHONY: plan validate quality-gate provision audio-runtime-check audio-tools-check audio-tools clean
 .PHONY: text-check build-text-demo text-demo text-demo-smoke
+.PHONY: graphics-check
+.PHONY: build-graphics-demo graphics-demo graphics-demo-smoke
+
+graphics-check:
+	$(MAKE) quality-gate MODULE=modules/berad-graphics
+
+build-graphics-demo:
+	mkdir -p .cache/bin
+	GOWORK=off GOPROXY=off GOSUMDB=off $(GO) -C modules/berad-graphics build -mod=readonly -o "../../$(GRAPHICS_DEMO_BIN)" ./examples/atelier
+
+graphics-demo: build-graphics-demo
+	"./$(GRAPHICS_DEMO_BIN)"
+
+graphics-demo-smoke: build-graphics-demo
+	$(PYTHON) -I -B scripts/text_demo_smoke.py graphics
 .PHONY: tools format format-check lint lint-all lint-fix lint-config-check
 .PHONY: tooling-test
 
@@ -76,3 +92,4 @@ clean:
 	rm -f .cache/bin/audio-probe .cache/bin/audio-probe.exe
 	rm -f .cache/bin/audio-runtime-probe .cache/bin/audio-runtime-probe.exe
 	rm -f .cache/bin/berad-text-demo .cache/bin/berad-text-demo.exe
+	rm -f .cache/bin/berad-graphics-demo .cache/bin/berad-graphics-demo.exe

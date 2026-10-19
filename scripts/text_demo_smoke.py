@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -41,9 +42,13 @@ def startup(command, cwd, environment, seconds=8):
 
 
 def main():
-    executable = ROOT / ".cache/bin" / ("berad-text-demo.exe" if os.name == "nt" else "berad-text-demo")
+    kind = sys.argv[1] if len(sys.argv) == 2 else "text"
+    if kind not in ("text", "graphics") or len(sys.argv) > 2:
+        raise ValueError("select text or graphics demo")
+    name = "berad-" + kind + "-demo"
+    executable = ROOT / ".cache/bin" / (name + ".exe" if os.name == "nt" else name)
     if not executable.is_file():
-        raise RuntimeError("build the demo with make build-text-demo first")
+        raise RuntimeError("build the demo with make build-" + kind + "-demo first")
     with tempfile.TemporaryDirectory(prefix="text-demo-smoke-", dir=ROOT / ".cache") as directory:
         environment = dict(os.environ, HOME=directory, USERPROFILE=directory)
         result = startup([str(executable)], directory, environment)
