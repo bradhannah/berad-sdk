@@ -26,6 +26,7 @@ func (e *LibraryEditor) Save() error {
 	if err != nil {
 		return err
 	}
+
 	return errors.Join(e.saveLocked(), unlock())
 }
 
@@ -121,7 +122,8 @@ func (e *LibraryEditor) validateWindow(recording Recording) error {
 	if !validAssetPath(*recording.File) {
 		return fmt.Errorf("%w: invalid recording path", ErrAudioLibrary)
 	}
-	data, _, err := readRecordingSource(context.Background(), filepath.Join(e.assetRoot, filepath.FromSlash(*recording.File)))
+	path := filepath.Join(e.assetRoot, filepath.FromSlash(*recording.File))
+	data, _, err := readRecordingSource(context.Background(), path)
 	if err != nil {
 		return fmt.Errorf("read selection source: %w", err)
 	}
@@ -129,6 +131,7 @@ func (e *LibraryEditor) validateWindow(recording Recording) error {
 	if err != nil {
 		return err
 	}
+
 	return stream.Close()
 }
 
@@ -229,7 +232,10 @@ func entryEdits[T any](root jsonEdit, values map[string]T) []jsonEdit {
 func routingEntryEdits(root jsonEdit, routing Routing) []jsonEdit {
 	fields := objectSpans(root.data)
 	encoded := encodeAudioValue(routing)
-	sections := []string{"ambient", "tiles", "surfaces", "emitters", "defaultSurface"}
+	const fixedSections = 5
+	sections := make([]string, 0, fixedSections+len(routing.Groups))
+	sections = append(sections, routingAmbientKey, routingTilesKey, routingSurfacesKey,
+		routingEmittersKey, routingDefaultSurfaceKey)
 	for group := range routing.Groups {
 		sections = append(sections, group)
 	}
@@ -244,16 +250,17 @@ func routingEntryEdits(root jsonEdit, routing Routing) []jsonEdit {
 		field.start, field.end = field.start+root.start, field.end+root.start
 		fields[name] = field
 	}
-	edits := entryEdits(fields["ambient"], routing.Ambient)
-	edits = append(edits, entryEdits(fields["tiles"], routing.Tiles)...)
-	edits = append(edits, entryEdits(fields["surfaces"], routing.Surfaces)...)
-	edits = append(edits, entryEdits(fields["emitters"], routing.Emitters)...)
+	edits := entryEdits(fields[routingAmbientKey], routing.Ambient)
+	edits = append(edits, entryEdits(fields[routingTilesKey], routing.Tiles)...)
+	edits = append(edits, entryEdits(fields[routingSurfacesKey], routing.Surfaces)...)
+	edits = append(edits, entryEdits(fields[routingEmittersKey], routing.Emitters)...)
 	for group, assignments := range routing.Groups {
 		edits = append(edits, entryEdits(fields[group], assignments)...)
 	}
-	field := fields["defaultSurface"]
+	field := fields[routingDefaultSurfaceKey]
 	if value := encodeAudioValue(routing.DefaultSurface); !bytes.Equal(field.data, value) {
 		edits = append(edits, jsonEdit{start: field.start, end: field.end, data: value})
 	}
+
 	return edits
 }

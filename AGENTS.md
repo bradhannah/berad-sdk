@@ -31,6 +31,11 @@ are canonical, so the skill is not a second copy of the rules.
   standards commit. New guidance needs an impact review for ongoing conversions.
 - Run focused checks while developing. Run the appropriate final validation once;
   reuse valid results at later handoffs. See [validation](docs/VALIDATION.md).
+- Enforce [strict Go style](docs/LINTING.md) across every registered runtime/tool.
+  Use `make tools`, `make format-check` and `make lint`; final gates require zero
+  unfiltered findings. Start with scoped `make lint-fix` on reviewed source, inspect
+  automatic edits separately, then resolve manual findings without debt baselines
+  or blanket exclusions. Preserve public APIs and use only narrowly justified suppressions.
 - Add tests for meaningful behavior, regressions, boundaries, and failure paths.
   Avoid implementation-mirroring tests and duplicate integration scenarios.
 - Keep public contracts and examples current with implementation. Catalog retained

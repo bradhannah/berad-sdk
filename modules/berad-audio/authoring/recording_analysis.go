@@ -137,6 +137,7 @@ func readRecordingSource(ctx context.Context, path string) ([]byte, os.FileInfo,
 	if err := errors.Join(readErr, file.Close()); err != nil {
 		return nil, nil, fmt.Errorf("read recording source: %w", err)
 	}
+
 	return data, info, nil
 }
 
@@ -204,6 +205,7 @@ func recordingAnalysis(ctx context.Context, stream io.Reader) ([]float64, []loud
 	}
 }
 
+//nolint:containedctx // A call-scoped adapter supplies cancellation to io.Reader; it is never retained beyond analysis.
 type analysisReader struct {
 	ctx    context.Context
 	source io.Reader
@@ -211,9 +213,10 @@ type analysisReader struct {
 
 func (reader analysisReader) Read(buffer []byte) (int, error) {
 	if err := reader.ctx.Err(); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("analysis cancelled: %w", err)
 	}
-	return reader.source.Read(buffer)
+
+	return reader.source.Read(buffer) //nolint:wrapcheck // io.Reader requires the decoder's exact EOF sentinel.
 }
 
 // SuggestedWindow proposes -40 dB boundaries with one bucket of edge padding.

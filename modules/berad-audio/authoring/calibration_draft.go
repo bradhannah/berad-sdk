@@ -24,6 +24,7 @@ func (e *LibraryEditor) BeginCalibration(recordingID string, source *RecordingAu
 	if err != nil {
 		return nil, err
 	}
+
 	return &CalibrationDraft{region: region, suggestion: suggestion}, nil
 }
 
@@ -47,5 +48,6 @@ func (e *LibraryEditor) ApplyCalibration(ctx context.Context, draft *Calibration
 	recording.CalibrationGainDB = &draft.suggestion.GainDB
 	recording.CalibrationPolicy = CalibrationAuto
 	next.Recordings[draft.region.recordingID] = recording
+
 	return e.replace(next)
 }

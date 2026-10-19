@@ -10,6 +10,14 @@ import (
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
+const (
+	categorySFX        = "sfx"
+	categoryAmbient    = "ambient"
+	categoryMusic      = "music"
+	maximumSliderLevel = 10
+	unknownProvenance  = "unknown"
+)
+
 // AmbientPreset supplies consumer-authored defaults for new persistent cues.
 // Nil disables creation; no profile/family/prefix is silently invented.
 type AmbientPreset struct {
@@ -30,6 +38,7 @@ func (m *model) groupLabel(group string) string {
 	if label := m.targets.Groups[group].Label; label != "" {
 		return label
 	}
+
 	return group
 }
 
@@ -45,25 +54,27 @@ type Options struct {
 }
 
 func (m *model) targetPolicy(group, target string) TargetPolicy {
-	policy := TargetPolicy{Category: m.targets.Groups[group].Category}
+	var policy TargetPolicy
+	policy.Category = m.targets.Groups[group].Category
 	if group == "" || group == routingEmitter {
-		policy.Category = "ambient"
+		policy.Category = categoryAmbient
 	}
 	if m.options.TargetPolicy != nil {
 		policy = m.options.TargetPolicy(group, target)
 	}
 	if policy.Category == "" {
-		policy.Category = "sfx"
+		policy.Category = categorySFX
 	}
 	if policy.Title == "" {
 		policy.Title = "CHOOSE " + strings.ToUpper(policy.Category) + " SOUND"
 	}
+
 	return policy
 }
 
 func normalizedOptions(options Options) Options {
 	if options.SliderGain == nil {
-		options.SliderGain = func(level int) float64 { return float64(level) / 10 }
+		options.SliderGain = func(level int) float64 { return float64(level) / maximumSliderLevel }
 	}
 	if options.MixLabel == "" {
 		options.MixLabel = "PROJECT MIX"
@@ -75,35 +86,51 @@ func normalizedOptions(options Options) Options {
 		value := *options.Ambient
 		options.Ambient = &value
 	}
+
 	return options
 }
 
 func validateOptions(doc *audio.LibraryEditor, options Options) error {
-	for level := 0; level <= 10; level++ {
+	for level := range maximumSliderLevel + 1 {
 		value := options.SliderGain(level)
-		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		if !validUnitGain(value) {
 			return fmt.Errorf("%w: slider mapping must return finite values in [0,1]", audio.ErrLibrary)
 		}
 	}
 	if preset := options.Ambient; preset != nil {
 		_, exists := doc.Document().Taxonomy.Profiles[preset.Profile]
-		if !exists || preset.Family == "" || strings.TrimSpace(preset.HowToHear) == "" || math.IsNaN(preset.Gain) || math.IsInf(preset.Gain, 0) || preset.Gain < 0 || preset.Gain > 1 {
-			return fmt.Errorf("%w: ambient preset requires a known profile, family, description and gain in [0,1]", audio.ErrLibrary)
+		if !exists || preset.Family == "" || strings.TrimSpace(preset.HowToHear) == "" || !validUnitGain(preset.Gain) {
+			return fmt.Errorf("%w: ambient preset requires a known profile, family, description and gain in [0,1]",
+				audio.ErrLibrary)
 		}
 	}
+
+	return validateTargetPolicies(doc, options)
+}
+
+func validUnitGain(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 1
+}
+
+func validCategory(value string) bool {
+	return value == categoryMusic || value == categorySFX || value == categoryAmbient
+}
+
+func validateTargetPolicies(doc *audio.LibraryEditor, options Options) error {
 	for group, descriptor := range doc.Targets().Groups {
-		if descriptor.Category != "" && descriptor.Category != "music" && descriptor.Category != "sfx" && descriptor.Category != "ambient" {
+		if descriptor.Category != "" && !validCategory(descriptor.Category) {
 			return fmt.Errorf("%w: unknown target category", audio.ErrLibrary)
 		}
 		if options.TargetPolicy != nil {
 			for target := range descriptor.Targets {
 				policy := options.TargetPolicy(group, target)
-				if policy.Spatial && policy.Background || policy.Category != "music" && policy.Category != "sfx" && policy.Category != "ambient" {
+				if policy.Spatial && policy.Background || !validCategory(policy.Category) {
 					return fmt.Errorf("%w: invalid target policy for %s/%s", audio.ErrLibrary, group, target)
 				}
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -113,6 +140,7 @@ func ValidateOptions(doc *audio.LibraryEditor, options Options) error {
 	if doc == nil {
 		return fmt.Errorf("%w: editor document required", audio.ErrLibrary)
 	}
+
 	return validateOptions(doc, normalizedOptions(options))
 }
 
@@ -121,6 +149,7 @@ func (m *model) sliderGain(level int) float64 {
 	if math.IsNaN(gain) || math.IsInf(gain, 0) || gain < 0 || gain > 1 {
 		panic("invalid project slider gain")
 	}
+
 	return gain
 }
 
@@ -141,14 +170,14 @@ func (m *model) routingUsages(cueID string) []routingUsage {
 	for _, tile := range m.targets.Tiles {
 		assignment := routing.Tiles[tile.ID]
 		if assignment.AmbientCue == cueID {
-			usages = append(usages, routingUsage{"tiles", tile.ID, tile.Name + " · ambience"})
+			usages = append(usages, routingUsage{unitTiles, tile.ID, tile.Name + " · ambience"})
 		}
 		surface := assignment.Surface
 		if surface == "" {
 			surface = routing.DefaultSurface
 		}
 		if slices.Contains(routing.Surfaces[surface], cueID) {
-			usages = append(usages, routingUsage{"tiles", tile.ID, tile.Name + " · footsteps: " + surface})
+			usages = append(usages, routingUsage{unitTiles, tile.ID, tile.Name + " · footsteps: " + surface})
 		}
 	}
 	for group, descriptor := range m.targets.Groups {
@@ -164,15 +193,16 @@ func (m *model) routingUsages(cueID string) []routingUsage {
 		}
 	}
 	slices.SortFunc(usages, func(a, b routingUsage) int { return strings.Compare(a.Label, b.Label) })
+
 	return usages
 }
 
-func (m *model) addAmbient(id, name string, profile audio.AmbientProfile, recordingID string) error {
+func (m *model) addAmbient(identity, name string, profile audio.AmbientProfile, recordingID string) error {
 	preset := m.options.Ambient
 	if preset == nil {
 		return fmt.Errorf("%w: this project has no ambient creation preset", audio.ErrLibrary)
 	}
-	if id == "" || strings.Trim(id, "abcdefghijklmnopqrstuvwxyz0123456789_") != "" {
+	if identity == "" || strings.Trim(identity, "abcdefghijklmnopqrstuvwxyz0123456789_") != "" {
 		return fmt.Errorf("%w: invalid sound identifier", audio.ErrLibrary)
 	}
 	next, revision := m.doc.Document(), m.doc.Revision()
@@ -182,22 +212,32 @@ func (m *model) addAmbient(id, name string, profile audio.AmbientProfile, record
 	if _, exists := next.Taxonomy.Profiles[preset.Profile]; !exists {
 		return fmt.Errorf("%w: missing creation profile", audio.ErrLibrary)
 	}
-	cueID := preset.CuePrefix + id
+	cueID := preset.CuePrefix + identity
 	if _, exists := next.Cues[cueID]; exists {
 		return fmt.Errorf("%w: cue already exists", audio.ErrLibrary)
 	}
 	if recordingID == "" {
-		recordingID = id + "_01"
+		recordingID = identity + "_01"
 		if _, exists := next.Recordings[recordingID]; exists {
 			return fmt.Errorf("%w: recording already exists", audio.ErrLibrary)
 		}
-		next.Recordings[recordingID] = audio.Recording{Provenance: audio.RecordingProvenance{
-			OriginalFilename: "unknown", SourceType: "unknown", SourceURL: "unknown", SourceCreator: "unknown",
-			License: "unknown", ImportedFrom: "unknown", Processing: []audio.ProcessingStep{}}}
+		var recording audio.Recording
+		recording.Provenance = audio.RecordingProvenance{
+			OriginalFilename: unknownProvenance, SourceType: unknownProvenance, SourceURL: unknownProvenance,
+			SourceCreator: unknownProvenance, License: unknownProvenance, ImportedFrom: unknownProvenance,
+			Processing: []audio.ProcessingStep{},
+		}
+		next.Recordings[recordingID] = recording
 		next.Taxonomy.RecordingFamilies[preset.Family] = append(next.Taxonomy.RecordingFamilies[preset.Family], recordingID)
 	}
-	next.Cues[cueID] = audio.Cue{Name: name, RecordingID: recordingID, VolumeModifier: preset.Gain, HowToHear: preset.HowToHear}
+	next.Cues[cueID] = audio.Cue{Name: name, RecordingID: recordingID, VolumeModifier: preset.Gain,
+		HowToHear: preset.HowToHear, RecordingIDs: nil, Selection: "", SearchTerms: nil}
 	next.Routing.Ambient[cueID] = profile
 	next.Taxonomy.CueProfiles[preset.Profile] = append(next.Taxonomy.CueProfiles[preset.Profile], cueID)
-	return m.doc.ApplyDocument(revision, next)
+
+	if err := m.doc.ApplyDocument(revision, next); err != nil {
+		return fmt.Errorf("add ambient cue: %w", err)
+	}
+
+	return nil
 }

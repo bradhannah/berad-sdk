@@ -13,6 +13,10 @@ import (
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
+const millisecondsPerSecond = 1000
+const pcmBytesPerFrame = 4
+
+// ErrInvalidVoice identifies invalid voice inputs or failed device preparation.
 var ErrInvalidVoice = errors.New("invalid standalone audio voice")
 
 type devicePlayer interface {
@@ -20,9 +24,9 @@ type devicePlayer interface {
 	Pause()
 	PauseAndStopReading()
 	IsPlaying() bool
-	SetVolume(float64)
+	SetVolume(gain float64)
 	BufferedSize() int
-	Seek(int64, int) (int64, error)
+	Seek(offset int64, whence int) (int64, error)
 	Err() error
 }
 
@@ -34,7 +38,8 @@ type cursor struct {
 func (source *cursor) Read(buffer []byte) (int, error) {
 	count, err := source.source.Read(buffer)
 	source.position.Add(int64(count))
-	return count, err
+
+	return count, err //nolint:wrapcheck // The device requires the source's exact io.Reader EOF sentinel.
 }
 
 func (source *cursor) Seek(offset int64, whence int) (int64, error) {
@@ -42,6 +47,8 @@ func (source *cursor) Seek(offset int64, whence int) (int64, error) {
 	if err == nil {
 		source.position.Store(position)
 	}
+
+	//nolint:wrapcheck // Preserve the contextual authoring-stream seek result through this cursor adapter.
 	return position, err
 }
 
@@ -56,22 +63,30 @@ type Voice struct {
 }
 
 // NewVoice configures a voice without opening a device. Device creation is lazy.
-func NewVoice() *Voice { return &Voice{create: newNativePlayer} }
+func NewVoice() *Voice {
+	voice := new(Voice)
+	voice.create = newNativePlayer
+
+	return voice
+}
 
 // Play prepares a replacement before retiring the current voice. Caller-owned
 // source metadata never changes. PCM boost/saturation is SDK-owned, not duplicated.
-func (voice *Voice) Play(clip *authoring.RecordingAudio, window *authoring.PlaybackWindow, loop bool, gain float64) error {
+func (voice *Voice) Play(
+	clip *authoring.RecordingAudio, window *authoring.PlaybackWindow, loop bool, gain float64,
+) error {
 	if voice.create == nil || clip == nil || math.IsNaN(gain) || math.IsInf(gain, 0) || gain < 0 {
 		return fmt.Errorf("%w: initialized voice, source and finite nonnegative gain required", ErrInvalidVoice)
 	}
 	stream, err := clip.Stream(window, loop)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare audition stream: %w", err)
 	}
 	if err := stream.SetGain(math.Max(1, gain)); err != nil {
 		return errors.Join(err, stream.Close())
 	}
-	tracked := &cursor{source: stream}
+	tracked := new(cursor)
+	tracked.source = stream
 	player, err := voice.create(tracked)
 	if err != nil || player == nil {
 		if player != nil {
@@ -80,10 +95,12 @@ func (voice *Voice) Play(clip *authoring.RecordingAudio, window *authoring.Playb
 		if err == nil {
 			err = ErrInvalidVoice
 		}
+
 		return errors.Join(fmt.Errorf("create standalone player: %w", err), stream.Close())
 	}
 	if err := voice.Close(); err != nil {
 		player.PauseAndStopReading()
+
 		return errors.Join(err, stream.Close())
 	}
 	voice.player, voice.cursor = player, tracked
@@ -93,6 +110,7 @@ func (voice *Voice) Play(clip *authoring.RecordingAudio, window *authoring.Playb
 	}
 	player.SetVolume(math.Min(1, gain))
 	player.Play()
+
 	return nil
 }
 
@@ -112,8 +130,13 @@ func (voice *Voice) SetGain(gain float64) {
 	voice.player.SetVolume(math.Min(1, gain))
 }
 
+// Playing reports current device playback without servicing it.
 func (voice *Voice) Playing() bool { return voice.player != nil && voice.player.IsPlaying() }
-func (voice *Voice) Active() bool  { return voice.player != nil }
+
+// Active includes paused or completed voices retained for seeking.
+func (voice *Voice) Active() bool { return voice.player != nil }
+
+// Pause changes playback while retaining the current voice and position.
 func (voice *Voice) Pause(paused bool) {
 	if voice.player == nil {
 		return
@@ -131,21 +154,25 @@ func (voice *Voice) PositionMs() int64 {
 		return 0
 	}
 	played := max(0, voice.cursor.position.Load()-int64(voice.player.BufferedSize()))
-	position := played * 1000 / (authoring.EditorSampleRate * 4)
+	position := played * millisecondsPerSecond / (authoring.EditorSampleRate * pcmBytesPerFrame)
 	if voice.loop && voice.endMs > voice.startMs {
 		position %= voice.endMs - voice.startMs
 	}
+
 	return min(voice.endMs, voice.startMs+position)
 }
 
+// SeekMs clamps a source-relative position to the selected window.
 func (voice *Voice) SeekMs(position int64) error {
 	if voice.player == nil {
 		return nil
 	}
 	position = max(voice.startMs, min(voice.endMs, position)) - voice.startMs
-	if _, err := voice.player.Seek(position*authoring.EditorSampleRate/1000*4, io.SeekStart); err != nil {
+	offset := position * authoring.EditorSampleRate / millisecondsPerSecond * pcmBytesPerFrame
+	if _, err := voice.player.Seek(offset, io.SeekStart); err != nil {
 		return fmt.Errorf("seek standalone voice: %w", err)
 	}
+
 	return nil
 }
 
@@ -156,9 +183,11 @@ func (voice *Voice) Failure() error {
 			return fmt.Errorf("standalone voice: %w", err)
 		}
 	}
+
 	return nil
 }
 
+// Close stops native reads before retiring the owned stream; repeated calls are harmless.
 func (voice *Voice) Close() error {
 	if voice.player == nil {
 		return nil
@@ -166,5 +195,6 @@ func (voice *Voice) Close() error {
 	voice.player.PauseAndStopReading()
 	err := errors.Join(voice.Failure(), voice.cursor.source.Close())
 	voice.player, voice.cursor = nil, nil
+
 	return err
 }

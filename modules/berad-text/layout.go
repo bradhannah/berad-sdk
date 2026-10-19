@@ -13,18 +13,47 @@ import (
 	"github.com/rivo/uniseg"
 )
 
+const (
+	defaultLayoutWork = 8 << 20
+	maxLayoutLines    = 8192
+	maxLayoutGlyphs   = 131072
+	alignDivisor      = 2
+)
+
+var (
+	errLayoutOptions = errors.New("text: invalid content/layout options")
+	errDefaultFont   = errors.New("text: empty layout requires a default font")
+	errLineLimit     = errors.New("text: layout exceeds 8192 lines")
+	errLayoutWork    = errors.New("text: layout work budget exceeded")
+	errLayoutExtent  = errors.New("text: invalid or excessive layout extent")
+	errGlyphLimit    = errors.New("text: glyph budget exceeded")
+	errRange         = errors.New("text: invalid UTF-8 range")
+	errCaretOffset   = errors.New("text: invalid caret offset")
+	errCaretLine     = errors.New("text: caret has no line")
+	errPoint         = errors.New("text: nonfinite point")
+)
+
 // Point and Rect use layout-local pixels, independent of camera/window coordinates.
 type Point struct{ X, Y float64 }
+
+// Rect is a half-open rectangle in layout-local pixels.
 type Rect struct{ Min, Max Point }
 
-func (r Rect) Width() float64  { return r.Max.X - r.Min.X }
+// Width returns the horizontal extent.
+func (r Rect) Width() float64 { return r.Max.X - r.Min.X }
+
+// Height returns the vertical extent.
 func (r Rect) Height() float64 { return r.Max.Y - r.Min.Y }
+
+// Contains reports half-open point coverage.
 func (r Rect) Contains(p Point) bool {
 	return p.X >= r.Min.X && p.Y >= r.Min.Y && p.X < r.Max.X && p.Y < r.Max.Y
 }
 
+// Align selects horizontal placement within a supplied width.
 type Align uint8
 
+// Alignment values retain source order; they do not select text direction.
 const (
 	AlignStart Align = iota
 	AlignCenter
@@ -87,46 +116,70 @@ type Layout struct {
 // Colours do not change geometry. Horizontal engine shaping is used; queries
 // expose actual cluster coverage, not invented interior-ligature caret accuracy.
 func NewLayout(content *Content, options LayoutOptions) (*Layout, error) {
-	if content == nil || !finite(options.Width) || options.Width < 0 || !finite(options.LineSpacing) || options.LineSpacing < 0 || options.Align > AlignEnd || options.MaxWork < 0 {
-		return nil, errors.New("text: invalid content/layout options")
+	if content == nil || !validLayoutOptions(options) {
+		return nil, errLayoutOptions
 	}
 	font := options.DefaultFont
 	if font == nil && len(content.spans) > 0 {
 		font = content.spans[0].Font
 	}
 	if font == nil {
-		return nil, errors.New("text: empty layout requires a default font")
+		return nil, errDefaultFont
 	}
 	budget := options.MaxWork
 	if budget == 0 {
-		budget = 8 << 20
+		budget = defaultLayoutWork
 	}
-	l := &Layout{content: content}
+	layout := new(Layout)
+	layout.content = content
+	if err := layout.buildLines(font, options, &budget); err != nil {
+		return nil, err
+	}
+	digest := sha256.New()
+	digest.Write(content.key[:])
+	digest.Write(font.key[:])
+	writeNumbers(digest, options.Width, options.LineSpacing, float64(options.Align))
+	if options.TopAlign {
+		digest.Write([]byte{1})
+	} else {
+		digest.Write([]byte{0})
+	}
+	copy(layout.key[:], digest.Sum(nil))
+
+	return layout, nil
+}
+
+func validLayoutOptions(options LayoutOptions) bool {
+	return finite(options.Width) && options.Width >= 0 && finite(options.LineSpacing) &&
+		options.LineSpacing >= 0 && options.Align <= AlignEnd && options.MaxWork >= 0
+}
+
+func (l *Layout) buildLines(font *Font, options LayoutOptions, budget *int) error {
 	start := 0
-	y := 0.0
+	positionY := 0.0
 	for {
-		end, next := paragraph(content.text, start)
+		end, next := paragraph(l.content.text, start)
 		for {
 			lineEnd := end
 			if options.Width > 0 && start < end {
 				var err error
-				lineEnd, err = wrapEnd(content, start, end, options.Width, &budget)
+				lineEnd, err = wrapEnd(l.content, start, end, options.Width, budget)
 				if err != nil {
-					return nil, err
+					return err
 				}
 			}
 			lineNext := lineEnd
 			if lineEnd == end {
 				lineNext = next
 			}
-			height, err := l.addLine(start, lineEnd, lineNext, y, font, options, &budget)
+			height, err := l.addLine(start, lineEnd, lineNext, positionY, font, options, budget)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			if len(l.lines) > 8192 {
-				return nil, errors.New("text: layout exceeds 8192 lines")
+			if len(l.lines) > maxLayoutLines {
+				return errLineLimit
 			}
-			y += height
+			positionY += height
 			start = lineEnd
 			if start == end {
 				break
@@ -137,17 +190,8 @@ func NewLayout(content *Content, options LayoutOptions) (*Layout, error) {
 		}
 		start = next
 	}
-	h := sha256.New()
-	h.Write(content.key[:])
-	h.Write(font.key[:])
-	writeNumbers(h, options.Width, options.LineSpacing, float64(options.Align))
-	if options.TopAlign {
-		h.Write([]byte{1})
-	} else {
-		h.Write([]byte{0})
-	}
-	copy(l.key[:], h.Sum(nil))
-	return l, nil
+
+	return nil
 }
 
 func paragraph(text string, start int) (int, int) {
@@ -160,30 +204,33 @@ func paragraph(text string, start int) (int, int) {
 	if text[end] == '\r' && next < len(text) && text[next] == '\n' {
 		next++
 	}
+
 	return end, next
 }
 
 func spend(budget *int, n int) error {
 	if n > *budget {
-		return errors.New("text: layout work budget exceeded")
+		return errLayoutWork
 	}
 	*budget -= n
+
 	return nil
 }
 
 func runs(content *Content, start, end int) []shapedRun {
 	var result []shapedRun
 	for _, span := range content.spans {
-		a, b := max(start, span.start), min(end, span.end)
-		if a >= b {
+		spanStart, spanEnd := max(start, span.start), min(end, span.end)
+		if spanStart >= spanEnd {
 			continue
 		}
-		if len(result) > 0 && result[len(result)-1].font.key == span.Font.key && result[len(result)-1].end == a {
-			result[len(result)-1].end = b
+		if len(result) > 0 && result[len(result)-1].font.key == span.Font.key && result[len(result)-1].end == spanStart {
+			result[len(result)-1].end = spanEnd
 		} else {
-			result = append(result, shapedRun{font: span.Font, start: a, end: b})
+			result = append(result, shapedRun{font: span.Font, start: spanStart, end: spanEnd, width: 0, glyphs: nil})
 		}
 	}
+
 	return result
 }
 
@@ -196,25 +243,27 @@ func measure(content *Content, start, end int, budget *int) (float64, error) {
 		if run.font.face != nil {
 			w, _ := etext.Measure(content.text[run.start:run.end], run.font.face, 0)
 			width += w
+
 			continue
 		}
 		scale := run.font.options.Size / (run.font.source.metrics.Ascent + run.font.source.metrics.Descent)
 		for _, r := range content.text[run.start:run.end] {
 			g, ok := run.font.source.glyphs[r]
 			if !ok {
-				return 0, fmt.Errorf("text: bitmap font has no glyph %U", r)
+				return 0, fmt.Errorf("%w %U", errMissingGlyph, r)
 			}
 			width += g.Advance * scale
 		}
 	}
+
 	return width, nil
 }
 
 func wrapEnd(content *Content, start, end int, width float64, budget *int) (int, error) {
-	g := uniseg.NewGraphemes(content.text[start:end])
+	graphemes := uniseg.NewGraphemes(content.text[start:end])
 	lastFit, lastBreak := start, start
-	for g.Next() {
-		_, b := g.Positions()
+	for graphemes.Next() {
+		_, b := graphemes.Positions()
 		candidate := start + b
 		w, err := measure(content, start, candidate, budget)
 		if err != nil {
@@ -227,121 +276,160 @@ func wrapEnd(content *Content, start, end int, width float64, budget *int) (int,
 			if lastFit > start {
 				return lastFit, nil
 			}
+
 			return candidate, nil
 		}
 		lastFit = candidate
-		if g.LineBreak() != uniseg.LineDontBreak {
+		if graphemes.LineBreak() != uniseg.LineDontBreak {
 			lastBreak = candidate
 		}
 	}
+
 	return end, nil
 }
 
-func (l *Layout) addLine(start, end, next int, y float64, fallback *Font, o LayoutOptions, budget *int) (float64, error) {
+func (l *Layout) shapeRuns(start, end int, fallback *Font, budget *int) ([]shapedRun, Metrics, float64, error) {
 	if err := spend(budget, end-start); err != nil {
-		return 0, err
+		return nil, fallback.metrics, 0, err
 	}
-	r := runs(l.content, start, end)
+	shaped := runs(l.content, start, end)
 	ascent, descent, gap := fallback.metrics.Ascent, fallback.metrics.Descent, fallback.metrics.LineGap
 	width := 0.0
-	for i := range r {
-		f := r[i].font
-		m := f.metrics
-		ascent = max(ascent, m.Ascent)
-		descent = max(descent, m.Descent)
-		gap = max(gap, m.LineGap)
-		if f.face != nil {
-			r[i].glyphs = etext.AppendLazyGlyphs(nil, l.content.text[r[i].start:r[i].end], f.face, &etext.LayoutOptions{})
-			r[i].width = etext.AdvanceAt(l.content.text[r[i].start:r[i].end], r[i].end-r[i].start, f.face)
+	for index := range shaped {
+		run := &shaped[index]
+		metrics := run.font.metrics
+		ascent = max(ascent, metrics.Ascent)
+		descent = max(descent, metrics.Descent)
+		gap = max(gap, metrics.LineGap)
+		if run.font.face != nil {
+			value := l.content.text[run.start:run.end]
+			run.glyphs = etext.AppendLazyGlyphs(nil, value, run.font.face, new(etext.LayoutOptions))
+			run.width = etext.AdvanceAt(value, len(value), run.font.face)
 		} else {
 			var err error
-			r[i].width, err = measure(l.content, r[i].start, r[i].end, budget)
+			run.width, err = measure(l.content, run.start, run.end, budget)
 			if err != nil {
-				return 0, err
+				return nil, fallback.metrics, 0, err
 			}
 		}
-		width += r[i].width
+		width += run.width
 	}
 	if !finite(width) || !finite(ascent+descent+gap) || width > 1<<30 {
-		return 0, errors.New("text: invalid or excessive layout extent")
+		return nil, fallback.metrics, 0, errLayoutExtent
 	}
-	x := 0.0
-	if o.Width > 0 {
-		switch o.Align {
+
+	return shaped, Metrics{ascent, descent, gap}, width, nil
+}
+
+func (l *Layout) addLine(
+	start, end, next int, positionY float64, fallback *Font, options LayoutOptions, budget *int,
+) (float64, error) {
+	shaped, metrics, width, err := l.shapeRuns(start, end, fallback, budget)
+	if err != nil {
+		return 0, err
+	}
+	positionX := 0.0
+	if options.Width > 0 {
+		switch options.Align {
+		case AlignStart:
+			// Keep the natural origin.
 		case AlignCenter:
-			x = (o.Width - width) / 2
+			positionX = (options.Width - width) / alignDivisor
 		case AlignEnd:
-			x = o.Width - width
+			positionX = options.Width - width
 		}
 	}
-	height := ascent + descent
-	line := Line{start, end, next, Rect{Point{x, y}, Point{x + width, y + height}}, y + ascent}
+	height := metrics.Ascent + metrics.Descent
+	bounds := Rect{Point{positionX, positionY}, Point{positionX + width, positionY + height}}
+	line := Line{start, end, next, bounds, positionY + metrics.Ascent}
 	l.lines = append(l.lines, line)
-	l.bounds.Max.X = max(l.bounds.Max.X, max(width, o.Width))
-	l.bounds.Max.Y = max(l.bounds.Max.Y, y+height)
-	for _, run := range r {
-		f := run.font
-		dy := y + ascent - f.metrics.Ascent
-		if o.TopAlign {
-			dy = y
+	l.bounds.Max.X = max(l.bounds.Max.X, max(width, options.Width))
+	l.bounds.Max.Y = max(l.bounds.Max.Y, positionY+height)
+	for _, run := range shaped {
+		offsetY := positionY + metrics.Ascent - run.font.metrics.Ascent
+		if options.TopAlign {
+			offsetY = positionY
 		}
-		if f.face != nil {
-			clusters := make(map[[2]int]Rect)
-			for _, g := range run.glyphs {
-				a, b := run.start+g.StartIndexInBytes, run.start+g.EndIndexInBytes
-				if b <= a {
-					continue
-				}
-				pg := placedGlyph{font: f, glyph: g, x: x, y: dy, start: a, end: b, paint: l.paintAt(a)}
-				l.glyphs = append(l.glyphs, pg)
-				box := Rect{Point{x + min(g.OriginX, g.OriginX+g.AdvanceX), y}, Point{x + max(g.OriginX, g.OriginX+g.AdvanceX), y + height}}
-				key := [2]int{a, b}
-				if old, ok := clusters[key]; ok {
-					box = union(old, box)
-				}
-				clusters[key] = box
-				if !g.ImageBounds.Empty() {
-					l.includeInk(Rect{Point{x + float64(g.ImageBounds.Min.X), dy + float64(g.ImageBounds.Min.Y)}, Point{x + float64(g.ImageBounds.Max.X), dy + float64(g.ImageBounds.Max.Y)}})
-				}
-			}
-			keys := make([][2]int, 0, len(clusters))
-			for key := range clusters {
-				keys = append(keys, key)
-			}
-			slices.SortFunc(keys, func(a, b [2]int) int {
-				if a[0] != b[0] {
-					return a[0] - b[0]
-				}
-				return a[1] - b[1]
-			})
-			for _, key := range keys {
-				l.clusters = append(l.clusters, cluster{key[0], key[1], clusters[key]})
-			}
+		if run.font.face != nil {
+			l.placeOutlineRun(run, positionX, offsetY, line)
 		} else {
-			scale := f.options.Size / (f.source.metrics.Ascent + f.source.metrics.Descent)
-			gx := x
-			for off, ch := range l.content.text[run.start:run.end] {
-				g := f.source.glyphs[ch]
-				a := run.start + off
-				b := a + utf8.RuneLen(ch)
-				pg := placedGlyph{font: f, bitmap: g, isBitmap: true, x: gx + g.BearingX*scale, y: dy + f.metrics.Ascent + g.BearingY*scale, scale: scale, start: a, end: b, paint: l.paintAt(a)}
-				l.glyphs = append(l.glyphs, pg)
-				l.clusters = append(l.clusters, cluster{a, b, Rect{Point{gx, y}, Point{gx + g.Advance*scale, y + height}}})
-				if !g.Region.Empty() {
-					l.includeInk(Rect{Point{pg.x, pg.y}, Point{pg.x + float64(g.Region.Dx())*scale, pg.y + float64(g.Region.Dy())*scale}})
-				}
-				gx += g.Advance * scale
-			}
+			l.placeBitmapRun(run, positionX, offsetY, line)
 		}
-		x += run.width
+		positionX += run.width
 	}
-	if len(l.glyphs) > 131072 {
-		return 0, errors.New("text: glyph budget exceeded")
+	if len(l.glyphs) > maxLayoutGlyphs {
+		return 0, errGlyphLimit
 	}
-	if o.LineSpacing > 0 {
-		return o.LineSpacing, nil
+	if options.LineSpacing > 0 {
+		return options.LineSpacing, nil
 	}
-	return height + gap, nil
+
+	return height + metrics.LineGap, nil
+}
+
+func (l *Layout) placeOutlineRun(run shapedRun, positionX, offsetY float64, line Line) {
+	clusters := make(map[[2]int]Rect)
+	for _, glyph := range run.glyphs {
+		start, end := run.start+glyph.StartIndexInBytes, run.start+glyph.EndIndexInBytes
+		if end <= start {
+			continue
+		}
+		var placed placedGlyph
+		placed.font, placed.glyph = run.font, glyph
+		placed.x, placed.y, placed.start, placed.end, placed.paint = positionX, offsetY, start, end, l.paintAt(start)
+		l.glyphs = append(l.glyphs, placed)
+		box := Rect{
+			Point{positionX + min(glyph.OriginX, glyph.OriginX+glyph.AdvanceX), line.Bounds.Min.Y},
+			Point{positionX + max(glyph.OriginX, glyph.OriginX+glyph.AdvanceX), line.Bounds.Max.Y},
+		}
+		key := [2]int{start, end}
+		if old, ok := clusters[key]; ok {
+			box = union(old, box)
+		}
+		clusters[key] = box
+		if !glyph.ImageBounds.Empty() {
+			l.includeInk(Rect{
+				Point{positionX + float64(glyph.ImageBounds.Min.X), offsetY + float64(glyph.ImageBounds.Min.Y)},
+				Point{positionX + float64(glyph.ImageBounds.Max.X), offsetY + float64(glyph.ImageBounds.Max.Y)},
+			})
+		}
+	}
+	keys := make([][2]int, 0, len(clusters))
+	for key := range clusters {
+		keys = append(keys, key)
+	}
+	slices.SortFunc(keys, func(a, b [2]int) int {
+		if a[0] != b[0] {
+			return a[0] - b[0]
+		}
+
+		return a[1] - b[1]
+	})
+	for _, key := range keys {
+		l.clusters = append(l.clusters, cluster{key[0], key[1], clusters[key]})
+	}
+}
+
+func (l *Layout) placeBitmapRun(run shapedRun, positionX, offsetY float64, line Line) {
+	font := run.font
+	scale := font.options.Size / (font.source.metrics.Ascent + font.source.metrics.Descent)
+	for offset, character := range l.content.text[run.start:run.end] {
+		glyph := font.source.glyphs[character]
+		start := run.start + offset
+		end := start + utf8.RuneLen(character)
+		var placed placedGlyph
+		placed.font, placed.bitmap, placed.isBitmap, placed.scale = font, glyph, true, scale
+		placed.x, placed.y = positionX+glyph.BearingX*scale, offsetY+font.metrics.Ascent+glyph.BearingY*scale
+		placed.start, placed.end, placed.paint = start, end, l.paintAt(start)
+		l.glyphs = append(l.glyphs, placed)
+		box := Rect{Point{positionX, line.Bounds.Min.Y}, Point{positionX + glyph.Advance*scale, line.Bounds.Max.Y}}
+		l.clusters = append(l.clusters, cluster{start, end, box})
+		if !glyph.Region.Empty() {
+			l.includeInk(Rect{Point{placed.x, placed.y},
+				Point{placed.x + float64(glyph.Region.Dx())*scale, placed.y + float64(glyph.Region.Dy())*scale}})
+		}
+		positionX += glyph.Advance * scale
+	}
 }
 
 func (l *Layout) paintAt(offset int) string {
@@ -350,6 +438,7 @@ func (l *Layout) paintAt(offset int) string {
 			return s.Paint
 		}
 	}
+
 	return ""
 }
 func union(a, b Rect) Rect {
@@ -362,10 +451,18 @@ func (l *Layout) includeInk(r Rect) {
 		l.ink = union(l.ink, r)
 	}
 }
+
+// Content returns the retained immutable source snapshot.
 func (l *Layout) Content() *Content { return l.content }
-func (l *Layout) Bounds() Rect      { return l.bounds }
-func (l *Layout) InkBounds() Rect   { return l.ink }
-func (l *Layout) Lines() []Line     { return slices.Clone(l.lines) }
+
+// Bounds returns logical placement extents.
+func (l *Layout) Bounds() Rect { return l.bounds }
+
+// InkBounds includes glyph bearings and overhangs.
+func (l *Layout) InkBounds() Rect { return l.ink }
+
+// Lines returns detached source ranges and placement metrics.
+func (l *Layout) Lines() []Line { return slices.Clone(l.lines) }
 
 // Hit is local geometric coverage, not an activation or visibility decision.
 type Hit struct {
@@ -375,16 +472,18 @@ type Hit struct {
 	Tags       []string
 }
 
-func (l *Layout) HitTestLocal(p Point) []Hit {
+// HitTestLocal returns geometric candidates; host routing decides eligibility.
+func (l *Layout) HitTestLocal(point Point) []Hit {
 	var result []Hit
-	if !finite(p.X) || !finite(p.Y) {
+	if !finite(point.X) || !finite(point.Y) {
 		return result
 	}
 	for _, c := range l.clusters {
-		if c.rect.Contains(p) {
+		if c.rect.Contains(point) {
 			result = append(result, Hit{l.content, c.start, c.end, c.rect, l.tags(c.start, c.end)})
 		}
 	}
+
 	return result
 }
 func (l *Layout) tags(start, end int) []string {
@@ -394,6 +493,7 @@ func (l *Layout) tags(start, end int) []string {
 			result = append(result, s.Tag)
 		}
 	}
+
 	return result
 }
 
@@ -405,10 +505,11 @@ type Coverage struct {
 	Rects                                    []Rect
 }
 
+// RangeRects expands requested UTF-8 ranges to the represented shaping clusters.
 func (l *Layout) RangeRects(start, end int) (Coverage, error) {
-	result := Coverage{RequestedStart: start, RequestedEnd: end, Start: start, End: end}
+	result := Coverage{RequestedStart: start, RequestedEnd: end, Start: start, End: end, Snapped: false, Rects: nil}
 	if !l.boundary(start) || !l.boundary(end) || end < start {
-		return result, errors.New("text: invalid UTF-8 range")
+		return result, errRange
 	}
 	if start == end {
 		return result, nil
@@ -421,10 +522,12 @@ func (l *Layout) RangeRects(start, end int) (Coverage, error) {
 		}
 	}
 	result.Snapped = result.Start != start || result.End != end
+
 	return result, nil
 }
 func (l *Layout) boundary(offset int) bool {
-	return offset >= 0 && offset <= len(l.content.text) && (offset == len(l.content.text) || utf8.RuneStart(l.content.text[offset]))
+	return offset >= 0 && offset <= len(l.content.text) &&
+		(offset == len(l.content.text) || utf8.RuneStart(l.content.text[offset]))
 }
 
 // Caret reports a supported visual site, with explicit source snapping. Upstream
@@ -437,46 +540,53 @@ type Caret struct {
 	Snapped, Inside, Upstream bool
 }
 
+// CaretAt resolves an offset to a supported site with explicit wrap affinity.
 func (l *Layout) CaretAt(offset int, upstream bool) (Caret, error) {
 	if !l.boundary(offset) {
-		return Caret{}, errors.New("text: invalid caret offset")
+		return Caret{}, errCaretOffset
 	}
-	for i, line := range l.lines {
-		if offset < line.Start || offset > line.Next {
+	for index, line := range l.lines {
+		if !lineAcceptsCaret(line, index+1 < len(l.lines), offset, upstream) {
 			continue
 		}
-		if offset == line.End && line.Next == line.End && i+1 < len(l.lines) && !upstream {
-			continue
-		}
-		if offset == line.Next && line.Next > line.End && i+1 < len(l.lines) {
-			continue
-		}
-		x := line.Bounds.Max.X
+		positionX := line.Bounds.Max.X
 		resolved := min(offset, line.End)
 		for _, c := range l.clusters {
 			if c.start >= line.Start && c.end <= line.End && offset >= c.start && offset < c.end {
-				x = c.rect.Min.X
+				positionX = c.rect.Min.X
 				resolved = c.start
+
 				break
 			}
 		}
-		return Caret{l.content, offset, resolved, Point{x, line.Bounds.Min.Y}, line.Bounds.Height(), resolved != offset, true, upstream}, nil
+
+		return Caret{l.content, offset, resolved, Point{positionX, line.Bounds.Min.Y},
+			line.Bounds.Height(), resolved != offset, true, upstream}, nil
 	}
-	return Caret{}, errors.New("text: caret has no line")
+
+	return Caret{}, errCaretLine
 }
 
-func (l *Layout) NearestCaret(p Point) (Caret, error) {
-	if !finite(p.X) || !finite(p.Y) {
-		return Caret{}, errors.New("text: nonfinite point")
+func lineAcceptsCaret(line Line, hasNext bool, offset int, upstream bool) bool {
+	return offset >= line.Start && offset <= line.Next &&
+		(offset != line.End || line.Next != line.End || !hasNext || upstream) &&
+		(offset != line.Next || line.Next <= line.End || !hasNext)
+}
+
+// NearestCaret returns the nearest supported cluster site, including outside points.
+func (l *Layout) NearestCaret(point Point) (Caret, error) {
+	if !finite(point.X) || !finite(point.Y) {
+		return Caret{}, errPoint
 	}
 	best := math.Inf(1)
 	var result Caret
 	consider := func(offset int, x float64, line Line, upstream bool) {
-		dy := max(line.Bounds.Min.Y-p.Y, 0, p.Y-line.Bounds.Max.Y)
-		d := (x-p.X)*(x-p.X) + dy*dy
+		dy := max(line.Bounds.Min.Y-point.Y, 0, point.Y-line.Bounds.Max.Y)
+		d := (x-point.X)*(x-point.X) + dy*dy
 		if d < best {
 			best = d
-			result = Caret{Content: l.content, Requested: offset, Offset: offset, Position: Point{x, line.Bounds.Min.Y}, Height: line.Bounds.Height(), Inside: line.Bounds.Contains(p), Upstream: upstream}
+			result = Caret{Content: l.content, Requested: offset, Offset: offset, Position: Point{x, line.Bounds.Min.Y},
+				Height: line.Bounds.Height(), Inside: line.Bounds.Contains(point), Upstream: upstream, Snapped: false}
 		}
 	}
 	for _, line := range l.lines {
@@ -489,5 +599,6 @@ func (l *Layout) NearestCaret(p Point) (Caret, error) {
 		}
 		consider(line.End, line.Bounds.Max.X, line, true)
 	}
+
 	return result, nil
 }

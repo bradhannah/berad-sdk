@@ -246,6 +246,7 @@ def execute_lane(root, module, lane, env, candidate_dependencies=()):
             consumer = Path(temporary) / "consumer"
             prepare_consumer(source, consumer, module, env, replacements)
             verify_closure(consumer, env, module, [(INVENTORY.import_path(module), "../library"), *replacements])
+            run(["go", "vet", "-mod=readonly", "./..."], consumer, env)
             test_packages(consumer, env)
             test_packages(consumer, env, race=True)
             if lane == "candidate":

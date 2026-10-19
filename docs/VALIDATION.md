@@ -4,6 +4,8 @@
 
 The checker requires Python 3.10+. Registered Go modules additionally need their
 declared toolchain, cached dependencies, and a C compiler for race instrumentation.
+Pinned goimports/golangci-lint executables are provisioned separately with
+`make tools`; see [strict linting](LINTING.md) for the complete source/test policy.
 Original game data, a native audio device, private service, Node and network are
 not required. From the repository:
 
@@ -19,10 +21,13 @@ the checker contracts and registered module lanes:
 | Check | Inputs and execution |
 | --- | --- |
 | contracts | Always runs the cheap manifest/module-inventory, required-file, Markdown link/catalog, skill, and source-path checks |
-| checker-tests | Runs stdlib regression tests for the checker; reuses success when scripts/tests, Makefile, manifest, Python runtime identity, and relevant environment match |
+| style config | Checks tool pins and schema; real ignored-error/type-assertion probes establish effective policy |
+| module format | Checks every authored Go file including tests and nested consumers; never formats silently |
+| module lint | Full unfiltered production/example/support-package lint, plus non-test consumer packages in isolation |
+| checker-tests | Runs checker regressions and real style-tool failure probes; reuse binds scripts/tests, Makefile, manifest, Python/Go toolchains, pinned style binaries and relevant environment |
 | module unit | Isolated dependency-closure check, zero-skip tests, vet and build; reusable per registered module |
 | module race | Separate race-instrumented module tests; does not repeat vet/build |
-| module consumer | Copied public-API consumer using only a validated temporary module substitution; ordinary and race tests |
+| module consumer | Copied public-API consumer using only a validated temporary module substitution; vet, ordinary and race tests |
 
 Contract checks enumerate public skills (valid identities/descriptions, no duplicate
 names) and check their local document links. Documentation catalogs cover root and
@@ -64,6 +69,11 @@ unregistered nested modules and GOFLAGS overrides. Embedded assets require
 extending dependency selection before adding `go:embed`. Only the module root
 README/LICENSE are excluded from expensive lane fingerprints; cheap contracts
 still inspect them every time. Other module assets remain inputs.
+Style lanes additionally bind `.golangci.yml` and actual pinned formatter/linter
+executable contents and build metadata. Both `validate` and `quality-gate` require
+style success; commit/PR orchestration cannot substitute unit-test evidence for it.
+The source policy matches the game's strict rules without its inherited-debt cutoff
+or game-specific exclusions. Production test exclusions are explicit in LINTING.md.
 Each lane has a nonblocking exclusive lock, invalidates stale proof before execution,
 and rechecks inputs before recording success. `plan` explains run/reuse without
 creating results. Native listening is not part of controlled-transport lanes.

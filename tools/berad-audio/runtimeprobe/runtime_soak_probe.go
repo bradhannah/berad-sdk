@@ -91,9 +91,10 @@ func (probe *runtimeProbeGame) finishSoak() error {
 		return fmt.Errorf("%w: native soak retained heap grew beyond %d bytes",
 			berad.ErrInvalidRequest, nativeSoakHeapTolerance)
 	}
-	if _, err := fmt.Fprintf(probe.output, "Native soak: cycles=%d transports=%d baseline_heap=%d final_heap=%d active=0\n",
+	const report = "Native soak: cycles=%d transports=%d baseline_heap=%d final_heap=%d active=0\n"
+	if _, err := fmt.Fprintf(probe.output, report,
 		probe.soak.cycles, probe.soak.cycles*nativeSoakVoices, probe.soak.baseline, memory.HeapAlloc); err != nil {
-		return err
+		return fmt.Errorf("report native soak: %w", err)
 	}
 	probe.complete = true
 

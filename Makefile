@@ -3,9 +3,35 @@ GO ?= go
 MODULE ?=
 SELECT_MODULE = $(if $(MODULE),--module $(MODULE),)
 TEXT_DEMO_BIN = .cache/bin/berad-text-demo$(if $(filter Windows_NT,$(OS)),.exe,)
+.DEFAULT_GOAL := plan
 
 .PHONY: plan validate quality-gate provision audio-runtime-check audio-tools-check audio-tools clean
 .PHONY: text-check build-text-demo text-demo text-demo-smoke
+.PHONY: tools format format-check lint lint-all lint-fix lint-config-check
+.PHONY: tooling-test
+
+tooling-test:
+	$(PYTHON) -I -B scripts/check.py tooling-test
+
+tools:
+	$(PYTHON) -I -B scripts/check.py tools
+
+format:
+	$(PYTHON) -I -B scripts/check.py format $(SELECT_MODULE)
+
+format-check:
+	$(PYTHON) -I -B scripts/check.py format-check $(SELECT_MODULE)
+
+lint: lint-config-check
+	$(PYTHON) -I -B scripts/check.py lint $(SELECT_MODULE)
+
+lint-all: lint
+
+lint-fix: lint-config-check
+	$(PYTHON) -I -B scripts/check.py lint-fix $(SELECT_MODULE)
+
+lint-config-check:
+	$(PYTHON) -I -B scripts/check.py lint-config-check
 
 plan:
 	$(PYTHON) -I -B scripts/check.py plan $(SELECT_MODULE)

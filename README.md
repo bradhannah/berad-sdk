@@ -66,6 +66,10 @@ python3 -I -B scripts/check.py validate
 ```
 
 Equivalent Make targets are `make plan`, `make validate`, and `make quality-gate`.
+Provision pinned formatting/lint tools with `make tools`. `make format-check` and
+`make lint` enforce the [strict Go style policy](docs/LINTING.md) across all registered
+runtimes and tools, with zero unfiltered findings required by both final gates.
+Use `make lint-fix MODULE=...` for a reviewed automatic-fix pass before manual cleanup.
 Checks are local and offline. Checker and registered module lanes reuse successful
 results when their inputs match; documentation checks remain inexpensive and run
 every time. See [validation](docs/VALIDATION.md) for exact coverage and limitations.

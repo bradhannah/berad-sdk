@@ -26,9 +26,10 @@ type runtimeProbeGame struct {
 }
 
 const (
-	runtimeProbeWidth  = 480
-	runtimeProbeHeight = 270
-	runtimeProbeFadeMs = 200
+	runtimeProbeWidth      = 480
+	runtimeProbeHeight     = 270
+	runtimeProbeFadeMs     = 200
+	runtimeProbeSampleRate = 44100
 )
 
 // Run borrows an immutable playback library and owns its temporary runtime/loop.
@@ -43,7 +44,7 @@ func Run(library *berad.Library, cue string, soak bool, output io.Writer) error 
 	}
 	context := eaudio.CurrentContext()
 	if context == nil {
-		context = eaudio.NewContext(44100)
+		context = eaudio.NewContext(runtimeProbeSampleRate)
 	}
 	probeGain := 0.2
 	if soak {
@@ -55,7 +56,8 @@ func Run(library *berad.Library, cue string, soak bool, output io.Writer) error 
 	if err != nil {
 		return fmt.Errorf("initialize native runtime: %w", err)
 	}
-	probe := &runtimeProbeGame{output: output, soak: nil, runtime: engine, cue: cue, started: time.Time{}, voice: berad.Voice{},
+	probe := &runtimeProbeGame{output: output, soak: nil, runtime: engine, cue: cue,
+		started: time.Time{}, voice: berad.Voice{},
 		advanced: false, releasing: false, complete: false}
 	if soak {
 		probe.soak = new(runtimeSoakState)
@@ -71,7 +73,11 @@ func Run(library *berad.Library, cue string, soak bool, output io.Writer) error 
 		return fmt.Errorf("%w: device probe did not complete", berad.ErrInvalidRequest)
 	}
 	_, err = fmt.Fprintln(output, "Ebitengine probe passed: position advanced; release retired; closed")
-	return err
+	if err != nil {
+		return fmt.Errorf("report native probe: %w", err)
+	}
+
+	return nil
 }
 
 func (probe *runtimeProbeGame) Update() error {
@@ -100,7 +106,7 @@ func (probe *runtimeProbeGame) Update() error {
 			return fmt.Errorf("%w: device position did not advance", berad.ErrInvalidRequest)
 		}
 		if _, err := fmt.Fprintf(probe.output, "Native module snapshot: %+v\n", snapshot); err != nil {
-			return err
+			return fmt.Errorf("report native snapshot: %w", err)
 		}
 		if err := probe.voice.Stop(runtimeProbeFadeMs * time.Millisecond); err != nil {
 			return fmt.Errorf("release native probe: %w", err)

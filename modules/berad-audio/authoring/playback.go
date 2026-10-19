@@ -18,8 +18,10 @@ func validAssetPath(name string) bool {
 // PlaybackDefinition projects only playback properties; authored routing,
 // taxonomy and provenance are not inferred runtime policy.
 func PlaybackDefinition(document LibraryDocument) (audio.Definition, error) {
-	definition := audio.Definition{Recordings: make(map[audio.RecordingID]audio.Recording), Cues: make(map[audio.CueID]audio.Cue)}
-	for id, source := range document.Recordings {
+	definition := audio.Definition{
+		Recordings: make(map[audio.RecordingID]audio.Recording), Cues: make(map[audio.CueID]audio.Cue),
+	}
+	for identity, source := range document.Recordings {
 		var recording audio.Recording
 		if source.File != nil {
 			recording.File = *source.File
@@ -29,18 +31,21 @@ func PlaybackDefinition(document LibraryDocument) (audio.Definition, error) {
 		}
 		if window := source.PlaybackWindow; window != nil {
 			if window.StartMs < 0 || window.EndMs <= window.StartMs || window.EndMs > math.MaxInt64/int64(time.Millisecond) {
-				return audio.Definition{}, fmt.Errorf("%w: recording %s window exceeds duration range", ErrLibrary, id)
+				return audio.Definition{}, fmt.Errorf("%w: recording %s window exceeds duration range", ErrLibrary, identity)
 			}
-			recording.Window = &audio.Window{Start: time.Duration(window.StartMs) * time.Millisecond, End: time.Duration(window.EndMs) * time.Millisecond}
+			recording.Window = &audio.Window{
+				Start: time.Duration(window.StartMs) * time.Millisecond, End: time.Duration(window.EndMs) * time.Millisecond,
+			}
 		}
-		definition.Recordings[audio.RecordingID(id)] = recording
+		definition.Recordings[audio.RecordingID(identity)] = recording
 	}
 	for id, source := range document.Cues {
-		cue := audio.Cue{Gain: source.VolumeModifier}
+		cue := audio.Cue{Gain: source.VolumeModifier, Recordings: nil}
 		for _, recording := range source.Recordings() {
 			cue.Recordings = append(cue.Recordings, audio.RecordingID(recording))
 		}
 		definition.Cues[audio.CueID(id)] = cue
 	}
+
 	return definition, nil
 }

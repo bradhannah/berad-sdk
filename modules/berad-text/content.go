@@ -8,6 +8,15 @@ import (
 	"unicode/utf8"
 )
 
+const maxContentSpans = 65536
+
+var (
+	errContentSpans = errors.New("text: too many spans")
+	errContent      = errors.New("text: content requires fonts, valid UTF-8 and at most 1 MiB")
+	errLogLimits    = errors.New("text: log limits must be positive")
+	errLogEntry     = errors.New("text: entry exceeds log budget")
+)
+
 // Span supplies text and typography. Paint names are resolved at draw time;
 // annotations are inert host identities, never callbacks. Bitmap font mappings
 // can include U+FFFC (or another explicit rune) for inline icons.
@@ -33,35 +42,38 @@ type Content struct {
 // NewContent preserves valid UTF-8 including authored spaces/newlines. At most
 // 1 MiB of text and 65536 spans are accepted. Empty spans may supply empty-line metrics.
 func NewContent(spans []Span) (*Content, error) {
-	if len(spans) > 65536 {
-		return nil, errors.New("text: too many spans")
+	if len(spans) > maxContentSpans {
+		return nil, errContentSpans
 	}
-	c := &Content{}
-	var b strings.Builder
+	content := new(Content)
+	var builder strings.Builder
 	metadataBytes := 0
-	h := sha256.New()
-	for _, s := range spans {
-		if s.Font == nil || !utf8.ValidString(s.Text) || len(s.Text)+len(s.Paint)+len(s.Tag) > 1<<20-b.Len()-metadataBytes {
-			return nil, errors.New("text: content requires fonts, valid UTF-8 and at most 1 MiB")
+	digest := sha256.New()
+	for _, span := range spans {
+		if span.Font == nil || !utf8.ValidString(span.Text) ||
+			len(span.Text)+len(span.Paint)+len(span.Tag) > 1<<20-builder.Len()-metadataBytes {
+			return nil, errContent
 		}
-		s.Text = strings.Clone(s.Text)
-		s.Paint = strings.Clone(s.Paint)
-		s.Tag = strings.Clone(s.Tag)
-		metadataBytes += len(s.Paint) + len(s.Tag)
-		start := b.Len()
-		b.WriteString(s.Text)
-		c.spans = append(c.spans, contentSpan{s, start, b.Len()})
-		h.Write(s.Font.key[:])
-		writeNumbers(h, float64(len(s.Text)), float64(len(s.Paint)), float64(len(s.Tag)))
-		h.Write([]byte(s.Text))
-		h.Write([]byte(s.Paint))
-		h.Write([]byte(s.Tag))
+		span.Text = strings.Clone(span.Text)
+		span.Paint = strings.Clone(span.Paint)
+		span.Tag = strings.Clone(span.Tag)
+		metadataBytes += len(span.Paint) + len(span.Tag)
+		start := builder.Len()
+		builder.WriteString(span.Text)
+		content.spans = append(content.spans, contentSpan{span, start, builder.Len()})
+		digest.Write(span.Font.key[:])
+		writeNumbers(digest, float64(len(span.Text)), float64(len(span.Paint)), float64(len(span.Tag)))
+		digest.Write([]byte(span.Text))
+		digest.Write([]byte(span.Paint))
+		digest.Write([]byte(span.Tag))
 	}
-	c.text = b.String()
-	copy(c.key[:], h.Sum(nil))
-	return c, nil
+	content.text = builder.String()
+	copy(content.key[:], digest.Sum(nil))
+
+	return content, nil
 }
 
+// Text returns the unchanged UTF-8 source.
 func (c *Content) Text() string { return c.text }
 
 // Spans returns a detached slice; Fonts are immutable shared values.
@@ -70,6 +82,7 @@ func (c *Content) Spans() []Span {
 	for i, s := range c.spans {
 		result[i] = s.Span
 	}
+
 	return result
 }
 
@@ -81,16 +94,19 @@ type Log struct {
 	maxEntries, maxBytes, bytes int
 }
 
+// NewLog requires positive complete-entry and source-text byte limits.
 func NewLog(maxEntries, maxBytes int) (*Log, error) {
 	if maxEntries <= 0 || maxBytes <= 0 {
-		return nil, errors.New("text: log limits must be positive")
+		return nil, errLogLimits
 	}
-	return &Log{maxEntries: maxEntries, maxBytes: maxBytes}, nil
+
+	return &Log{maxEntries: maxEntries, maxBytes: maxBytes, entries: nil, bytes: 0}, nil
 }
 
+// Append retains a complete snapshot and reports the number of oldest entries evicted.
 func (l *Log) Append(content *Content) (int, error) {
 	if content == nil || len(content.text) > l.maxBytes {
-		return 0, errors.New("text: entry exceeds log budget")
+		return 0, errLogEntry
 	}
 	dropped := 0
 	for len(l.entries) > 0 && (len(l.entries) >= l.maxEntries || l.bytes > l.maxBytes-len(content.text)) {
@@ -101,16 +117,25 @@ func (l *Log) Append(content *Content) (int, error) {
 	}
 	l.entries = append(l.entries, content)
 	l.bytes += len(content.text)
+
 	return dropped, nil
 }
 
+// Entries returns a detached slice of immutable snapshots.
 func (l *Log) Entries() []*Content { return slices.Clone(l.entries) }
-func (l *Log) Clear()              { clear(l.entries); l.entries = nil; l.bytes = 0 }
+
+// Clear releases all retained entries.
+func (l *Log) Clear() { clear(l.entries); l.entries = nil; l.bytes = 0 }
 
 // Panel retains one complete logical snapshot. It never discards earlier rows
 // because text wrapped beyond the visible rectangle.
 type Panel struct{ content *Content }
 
+// Set replaces the retained snapshot; nil clears the panel.
 func (p *Panel) Set(content *Content) { p.content = content }
-func (p *Panel) Content() *Content    { return p.content }
-func (p *Panel) Clear()               { p.content = nil }
+
+// Content returns the retained immutable snapshot, or nil.
+func (p *Panel) Content() *Content { return p.content }
+
+// Clear releases the retained snapshot.
+func (p *Panel) Clear() { p.content = nil }

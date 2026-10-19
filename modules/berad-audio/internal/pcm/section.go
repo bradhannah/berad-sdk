@@ -30,10 +30,12 @@ func Select(source io.ReadSeeker, length int64, options Options) (*Section, erro
 		options.End > length || options.Start%frameBytes != 0 || options.End%frameBytes != 0 {
 		return nil, fmt.Errorf("%w: positive whole-frame PCM window required", options.InvalidData)
 	}
-	selected := &Section{source: source, start: options.Start, size: options.End - options.Start, options: options}
+	selected := &Section{source: source, start: options.Start,
+		size: options.End - options.Start, options: options, position: 0}
 	if _, err := selected.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
+
 	return selected, nil
 }
 
@@ -66,9 +68,11 @@ func (source *Section) Read(buffer []byte) (int, error) {
 			return count, nil
 		}
 	}
-	return count, err
+
+	return count, err //nolint:wrapcheck // io.Reader requires an unwrapped EOF sentinel at the selected boundary.
 }
 
+// Seek validates the region-relative position before moving the borrowed decoder.
 func (source *Section) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
@@ -92,5 +96,6 @@ func (source *Section) Seek(offset int64, whence int) (int64, error) {
 		return 0, fmt.Errorf("seek decoded recording: %w", err)
 	}
 	source.position = offset
+
 	return offset, nil
 }

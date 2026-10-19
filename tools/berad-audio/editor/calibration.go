@@ -39,7 +39,7 @@ func (m *model) calibrationSuggestion(recording audio.Recording) (audio.Calibrat
 	family := m.doc.RecordingFamily(m.recordingID())
 	options, err := m.doc.CalibrationOptionsFor(m.recordingID())
 	if err != nil {
-		return audio.CalibrationSuggestion{}, err
+		return audio.CalibrationSuggestion{}, fmt.Errorf("resolve calibration policy: %w", err)
 	}
 	target := options.TargetDB
 	if recording.CalibrationTargetDB != nil {
@@ -188,6 +188,7 @@ func (m *model) editCalibrationTarget() {
 	options, err := m.doc.CalibrationOptionsFor(m.recordingID())
 	if err != nil {
 		m.report(err)
+
 		return
 	}
 	target := options.TargetDB

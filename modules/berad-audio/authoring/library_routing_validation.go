@@ -9,6 +9,14 @@ import (
 // validateRoutingStructure checks references and numerical integrity without
 // supplying a game's targets, names, required defaults or map vocabulary.
 func validateRoutingStructure(library *audioLibrary) error {
+	if err := validateAmbientProfiles(library); err != nil {
+		return err
+	}
+
+	return validateRoutingAssignments(library)
+}
+
+func validateAmbientProfiles(library *audioLibrary) error {
 	for cueID, profile := range library.Routing.Ambient {
 		cue, exists := library.Cues[cueID]
 		if !exists {
@@ -22,6 +30,11 @@ func validateRoutingStructure(library *audioLibrary) error {
 			return fmt.Errorf("%w: invalid ambient profile %s", ErrAudioLibrary, cueID)
 		}
 	}
+
+	return nil
+}
+
+func validateRoutingAssignments(library *audioLibrary) error {
 	var groups []map[string]*string
 	for name, assignments := range library.Routing.Groups {
 		if name == "" || strings.TrimSpace(name) != name {

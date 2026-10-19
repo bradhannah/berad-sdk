@@ -24,6 +24,7 @@ func (m *model) newAmbientPreviewGain() float64 {
 	if m.options.Ambient == nil {
 		return 0
 	}
+
 	return gain * m.options.Ambient.Gain * m.sliderGain(m.previewSliders[previewAmbience])
 }
 

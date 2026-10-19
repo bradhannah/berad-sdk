@@ -11,6 +11,7 @@ import (
 )
 
 func main() {
+	const maxLibraryBytes = 512 << 20
 	descriptor := flag.String("project", "", "Explicit tool project descriptor")
 	cue := flag.String("cue", "", "Cue to probe")
 	soak := flag.Bool("soak", false, "Run muted one-minute lifecycle/heap probe")
@@ -21,7 +22,7 @@ func main() {
 	}
 	doc, _, err := project.Open(*descriptor)
 	if err == nil {
-		library, failure := doc.RuntimeLibrary(512 << 20)
+		library, failure := doc.RuntimeLibrary(maxLibraryBytes)
 		err = failure
 		if err == nil {
 			err = runtimeprobe.Run(library, *cue, *soak, os.Stdout)

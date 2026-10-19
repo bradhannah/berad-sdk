@@ -16,7 +16,7 @@ func Read(source io.Reader, buffer []byte, invalidData error) (int, error) {
 		}
 		count += read
 		if err != nil {
-			return count, err
+			return count, err //nolint:wrapcheck // Preserve exact io.Reader sentinels, including EOF with a full final buffer.
 		}
 		if read == 0 {
 			empty++
@@ -28,5 +28,6 @@ func Read(source io.Reader, buffer []byte, invalidData error) (int, error) {
 			empty = 0
 		}
 	}
+
 	return count, nil
 }

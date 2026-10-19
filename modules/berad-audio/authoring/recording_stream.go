@@ -45,7 +45,9 @@ func (clip *RecordingAudio) Stream(window *PlaybackWindow, loop bool) (*Stream, 
 	return decodeRecording(clip.data, clip.path, clip.decode, window, loop)
 }
 
-func decodeRecording(data []byte, path string, decode audio.Decoder, window *PlaybackWindow, loop bool) (*Stream, error) {
+func decodeRecording(
+	data []byte, path string, decode audio.Decoder, window *PlaybackWindow, loop bool,
+) (*Stream, error) {
 	if decode == nil {
 		return nil, fmt.Errorf("%w: load a recording before streaming", ErrLibrary)
 	}
@@ -62,7 +64,8 @@ func decodeRecording(data []byte, path string, decode audio.Decoder, window *Pla
 	}
 	start, end := int64(0), length
 	if window != nil {
-		if window.StartMs < 0 || window.EndMs <= window.StartMs || window.EndMs > length/decodedPCMBytesPerFrame*millisecondsPerSecond/EditorSampleRate {
+		if window.StartMs < 0 || window.EndMs <= window.StartMs ||
+			window.EndMs > length/decodedPCMBytesPerFrame*millisecondsPerSecond/EditorSampleRate {
 			return nil, errors.Join(fmt.Errorf("%w: excerpt exceeds recording duration", ErrLibrary), closeDecoded(source))
 		}
 		start = window.StartMs * EditorSampleRate / millisecondsPerSecond * decodedPCMBytesPerFrame
@@ -73,24 +76,30 @@ func decodeRecording(data []byte, path string, decode audio.Decoder, window *Pla
 	if err != nil {
 		return nil, errors.Join(err, closeDecoded(source))
 	}
-	stream := &Stream{section: selected, source: source}
+	stream := new(Stream)
+	stream.section, stream.source = selected, source
 	stream.gain.Store(math.Float64bits(1))
 	stream.filter = pcm.NewGain(selected, &stream.gain, ErrLibrary)
+
 	return stream, nil
 }
 
+// Read supplies gain-adjusted PCM while preserving exact EOF semantics.
 func (stream *Stream) Read(buffer []byte) (int, error) {
 	if stream.source == nil {
 		return 0, ErrStreamClosed
 	}
-	return stream.filter.Read(buffer)
+
+	return stream.filter.Read(buffer) //nolint:wrapcheck // Preserve io.Reader EOF; the PCM layer owns contextual errors.
 }
 
+// Seek positions the selected PCM view relative to the supplied origin.
 func (stream *Stream) Seek(offset int64, whence int) (int64, error) {
 	if stream.source == nil {
 		return 0, ErrStreamClosed
 	}
-	return stream.filter.Seek(offset, whence)
+
+	return stream.filter.Seek(offset, whence) //nolint:wrapcheck // Forward the contextual shared PCM seek error unchanged.
 }
 
 // Length reports selected PCM bytes while live; retired streams report zero.
@@ -98,12 +107,15 @@ func (stream *Stream) Length() int64 {
 	if stream.source == nil {
 		return 0
 	}
+
 	return stream.section.Length()
 }
 
+// Close retires the owned decoder exactly once.
 func (stream *Stream) Close() error {
 	err := closeDecoded(stream.source)
 	stream.source, stream.section, stream.filter = nil, nil, nil
+
 	return err
 }
 
@@ -118,6 +130,7 @@ func (stream *Stream) SetGain(gain float64) error {
 		return fmt.Errorf("%w: finite nonnegative stream gain required", ErrLibrary)
 	}
 	stream.gain.Store(math.Float64bits(gain))
+
 	return nil
 }
 
@@ -127,5 +140,6 @@ func closeDecoded(source audio.PCMStream) error {
 			return fmt.Errorf("close decoded recording: %w", err)
 		}
 	}
+
 	return nil
 }

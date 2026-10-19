@@ -174,7 +174,7 @@ func TestImportRefusesCollidingContentAndPrevalidatesAutoGain(t *testing.T) {
 	clip, err := LoadRecording(source, ebitengine.Decode)
 	require.NoError(t, err)
 	destination := filepath.Join(filepath.Dir(editor.Path()),
-		importRelativePath("healing_01", editor.Recording("healing_01"), clip))
+		importRelativePath("healing_01", clip))
 	require.NoError(t, os.MkdirAll(filepath.Dir(destination), 0o755))
 	require.NoError(t, os.WriteFile(destination, []byte("different existing file"), 0o644))
 	require.ErrorContains(t, editor.ImportRecording("healing_01", source), "different contents")

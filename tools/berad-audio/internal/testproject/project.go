@@ -12,17 +12,42 @@ import (
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
-func Write(t testing.TB) (string, string, []byte) {
-	t.Helper()
-	root := t.TempDir()
+const recordingID = "signal"
+const profileID = "panel"
+
+// Write creates a neutral schema-3 project with generated PCM in a test-owned directory.
+func Write(tb testing.TB) (string, string, []byte) {
+	tb.Helper()
+	const directoryMode = 0o700
+	const fileMode = 0o600
+	root := tb.TempDir()
 	assets := filepath.Join(root, "media")
-	if err := os.Mkdir(assets, 0o700); err != nil {
-		t.Fatal(err)
+	if err := os.Mkdir(assets, directoryMode); err != nil {
+		tb.Fatal(err)
 	}
 	file := "signal.wav"
-	data := make([]byte, 44+441*4)
+	if err := os.WriteFile(filepath.Join(assets, file), signalWAV(), fileMode); err != nil {
+		tb.Fatal(err)
+	}
+	manifest, err := json.MarshalIndent(neutralDocument(file), "", "  ")
+	if err != nil {
+		tb.Fatal(err)
+	}
+	path := filepath.Join(root, "library.json")
+	if err := os.WriteFile(path, manifest, fileMode); err != nil {
+		tb.Fatal(err)
+	}
+
+	return path, assets, manifest
+}
+
+//nolint:mnd // Fixed RIFF/WAVE header offsets and PCM format words are the synthetic wire fixture.
+func signalWAV() []byte {
+	const payloadBytes = 441 * 4
+	const headerBytes = 44
+	data := make([]byte, headerBytes+payloadBytes)
 	copy(data, "RIFF")
-	binary.LittleEndian.PutUint32(data[4:], uint32(len(data)-8))
+	binary.LittleEndian.PutUint32(data[4:], headerBytes+payloadBytes-8)
 	copy(data[8:], "WAVEfmt ")
 	binary.LittleEndian.PutUint32(data[16:], 16)
 	binary.LittleEndian.PutUint16(data[20:], 1)
@@ -32,24 +57,37 @@ func Write(t testing.TB) (string, string, []byte) {
 	binary.LittleEndian.PutUint16(data[32:], 4)
 	binary.LittleEndian.PutUint16(data[34:], 16)
 	copy(data[36:], "data")
-	binary.LittleEndian.PutUint32(data[40:], uint32(len(data)-44))
+	binary.LittleEndian.PutUint32(data[40:], payloadBytes)
 	for offset := 44; offset < len(data); offset += 2 {
 		binary.LittleEndian.PutUint16(data[offset:], 4096)
 	}
-	if err := os.WriteFile(filepath.Join(assets, file), data, 0o600); err != nil {
-		t.Fatal(err)
+
+	return data
+}
+
+func neutralDocument(file string) authoring.LibraryDocument {
+	const schemaVersion = 3
+	var recording authoring.Recording
+	recording.File = &file
+	recording.Provenance = authoring.RecordingProvenance{
+		OriginalFilename: file, SourceType: "generated", SourceURL: "unknown", SourceCreator: "test generator",
+		License: "MIT", ImportedFrom: "generated", Processing: []authoring.ProcessingStep{},
 	}
-	provenance := authoring.RecordingProvenance{OriginalFilename: file, SourceType: "generated", SourceURL: "unknown", SourceCreator: "test generator", License: "MIT", ImportedFrom: "generated", Processing: []authoring.ProcessingStep{}}
-	document := authoring.LibraryDocument{SchemaVersion: 3, Recordings: map[string]authoring.Recording{"signal": {File: &file, Provenance: provenance}},
-		Cues:     map[string]authoring.Cue{"panel/accept": {Name: "Accept", RecordingID: "signal", VolumeModifier: 1, HowToHear: "Confirm panel"}},
-		Taxonomy: authoring.Taxonomy{RecordingFamilies: map[string][]string{"signal": {"signal"}}, CueProfiles: map[string][]string{"panel": {"panel/accept"}}, Profiles: map[string]authoring.CueClassification{"panel": {TargetAcousticFamily: "signal", Phase: "accept", Outcome: "confirmed", MixRole: "interface", Emitters: []string{"panel"}, Contexts: []string{"menu"}}}}}
-	manifest, err := json.MarshalIndent(document, "", "  ")
-	if err != nil {
-		t.Fatal(err)
+	var document authoring.LibraryDocument
+	document.SchemaVersion = schemaVersion
+	document.Recordings = map[string]authoring.Recording{recordingID: recording}
+	document.Cues = map[string]authoring.Cue{"panel/accept": {
+		Name: "Accept", RecordingID: recordingID, VolumeModifier: 1, HowToHear: "Confirm panel",
+		RecordingIDs: nil, Selection: "", SearchTerms: nil,
+	}}
+	document.Taxonomy = authoring.Taxonomy{
+		RecordingFamilies: map[string][]string{recordingID: {recordingID}},
+		CueProfiles:       map[string][]string{profileID: {"panel/accept"}}, ProfileSearchTerms: nil,
+		Profiles: map[string]authoring.CueClassification{profileID: {
+			TargetAcousticFamily: recordingID, Phase: "accept", Outcome: "confirmed", MixRole: "interface",
+			Emitters: []string{profileID}, Contexts: []string{"menu"},
+		}},
 	}
-	path := filepath.Join(root, "library.json")
-	if err := os.WriteFile(path, manifest, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path, assets, manifest
+
+	return document
 }

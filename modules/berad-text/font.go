@@ -20,6 +20,21 @@ import (
 
 const maxSourceBytes = 32 << 20
 
+var (
+	errFontData      = errors.New("text: font data must contain 1..32 MiB bytes")
+	errBitmapSource  = errors.New("text: invalid bitmap source or metrics")
+	errBitmapLimit   = errors.New("text: bitmap source exceeds dimension/byte limit")
+	errBitmapGlyph   = errors.New("text: invalid bitmap glyph")
+	errMissingGlyph  = errors.New("text: bitmap font has no glyph")
+	errFontSize      = errors.New("text: font requires a source and finite size in (0,4096]")
+	errFeature       = errors.New("text: invalid/duplicate feature or non-TTF font")
+	errVariation     = errors.New("text: invalid/duplicate variation or non-TTF font")
+	errNilFont       = errors.New("text: nil font")
+	errMeasurement   = errors.New("text: invalid measurement input")
+	errMeasureExtent = errors.New("text: nonfinite measurement")
+	errBitmapAdvance = errors.New("text: nonfinite bitmap advance")
+)
+
 // Source is immutable parsed font data or a detached bitmap atlas. Sources are
 // Go-owned values: retain them while needed; there is no hot-reload/global registry.
 // Engine-owned glyph caches follow the lifetime of the parsed TTF source.
@@ -50,6 +65,8 @@ type Feature struct {
 	Tag   string
 	Value uint32
 }
+
+// Variation selects a finite OpenType axis value by tag.
 type Variation struct {
 	Tag   string
 	Value float32
@@ -78,14 +95,18 @@ type Font struct {
 // ParseFont copies and parses supplied TTF/OTF bytes. No file is opened or closed.
 func ParseFont(data []byte) (*Source, error) {
 	if len(data) == 0 || len(data) > maxSourceBytes {
-		return nil, errors.New("text: font data must contain 1..32 MiB bytes")
+		return nil, errFontData
 	}
 	owned := bytes.Clone(data)
 	parsed, err := etext.NewGoTextFaceSource(bytes.NewReader(owned))
 	if err != nil {
 		return nil, fmt.Errorf("text: parse font: %w", err)
 	}
-	return &Source{ttf: parsed, key: sha256.Sum256(owned)}, nil
+
+	source := new(Source)
+	source.ttf, source.key = parsed, sha256.Sum256(owned)
+
+	return source, nil
 }
 
 // NewBitmapSource snapshots an atlas and glyph descriptors. It accepts arbitrary
@@ -93,103 +114,126 @@ func ParseFont(data []byte) (*Source, error) {
 // consumers explicitly supply their desired replacement glyph in content.
 func NewBitmapSource(atlas image.Image, metrics Metrics, glyphs map[rune]Glyph) (*Source, error) {
 	if atlas == nil || !validMetrics(metrics) || len(glyphs) == 0 || len(glyphs) > 65536 {
-		return nil, errors.New("text: invalid bitmap source or metrics")
+		return nil, errBitmapSource
 	}
 	bounds := atlas.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	if width <= 0 || height <= 0 || width > 8192 || height > 8192 || int64(width)*int64(height)*4 > maxSourceBytes {
-		return nil, errors.New("text: bitmap source exceeds dimension/byte limit")
+		return nil, errBitmapLimit
 	}
-	s := &Source{metrics: metrics, glyphs: make(map[rune]Glyph, len(glyphs))}
+	source := new(Source)
+	source.metrics, source.glyphs = metrics, make(map[rune]Glyph, len(glyphs))
 	keys := make([]rune, 0, len(glyphs))
-	for r, g := range glyphs {
-		if !utf8.ValidRune(r) || !finite(g.Advance) || g.Advance < 0 || !finite(g.BearingX) || !finite(g.BearingY) ||
-			(!g.Region.Empty() && !g.Region.In(bounds)) {
-			return nil, fmt.Errorf("text: invalid bitmap glyph %U", r)
+	for character, glyph := range glyphs {
+		if !validGlyph(character, glyph, bounds) {
+			return nil, fmt.Errorf("%w %U", errBitmapGlyph, character)
 		}
-		if !g.Region.Empty() {
-			g.Region = g.Region.Sub(bounds.Min)
+		if !glyph.Region.Empty() {
+			glyph.Region = glyph.Region.Sub(bounds.Min)
 		}
-		s.glyphs[r] = g
-		keys = append(keys, r)
+		source.glyphs[character] = glyph
+		keys = append(keys, character)
 	}
-	s.bitmap = image.NewRGBA(image.Rect(0, 0, width, height))
-	draw.Draw(s.bitmap, s.bitmap.Bounds(), atlas, bounds.Min, draw.Src)
-	h := sha256.New()
-	h.Write(s.bitmap.Pix)
-	writeNumbers(h, float64(width), float64(height), metrics.Ascent, metrics.Descent, metrics.LineGap)
+	source.bitmap = image.NewRGBA(image.Rect(0, 0, width, height))
+	draw.Draw(source.bitmap, source.bitmap.Bounds(), atlas, bounds.Min, draw.Src)
+	digest := sha256.New()
+	digest.Write(source.bitmap.Pix)
+	writeNumbers(digest, float64(width), float64(height), metrics.Ascent, metrics.Descent, metrics.LineGap)
 	slices.Sort(keys)
-	for _, r := range keys {
-		g := s.glyphs[r]
-		writeNumbers(h, float64(r), float64(g.Region.Min.X), float64(g.Region.Min.Y),
-			float64(g.Region.Max.X), float64(g.Region.Max.Y), g.Advance, g.BearingX, g.BearingY)
-		if g.Colored {
-			h.Write([]byte{1})
+	for _, character := range keys {
+		glyph := source.glyphs[character]
+		writeNumbers(digest, float64(character), float64(glyph.Region.Min.X), float64(glyph.Region.Min.Y),
+			float64(glyph.Region.Max.X), float64(glyph.Region.Max.Y), glyph.Advance, glyph.BearingX, glyph.BearingY)
+		if glyph.Colored {
+			digest.Write([]byte{1})
 		} else {
-			h.Write([]byte{0})
+			digest.Write([]byte{0})
 		}
 	}
-	copy(s.key[:], h.Sum(nil))
-	return s, nil
+	copy(source.key[:], digest.Sum(nil))
+
+	return source, nil
+}
+
+func validGlyph(character rune, glyph Glyph, bounds image.Rectangle) bool {
+	return utf8.ValidRune(character) && finite(glyph.Advance) && glyph.Advance >= 0 &&
+		finite(glyph.BearingX) && finite(glyph.BearingY) && (glyph.Region.Empty() || glyph.Region.In(bounds))
 }
 
 // NewFont creates an immutable instance; no renderer or graphics device is needed
 // for the SDK's source/metric operations beyond Ebitengine's platform initialization.
 func (s *Source) NewFont(options FontOptions) (*Font, error) {
 	if s == nil || (s.ttf == nil && s.bitmap == nil) || !finite(options.Size) || options.Size <= 0 || options.Size > 4096 {
-		return nil, errors.New("text: font requires a source and finite size in (0,4096]")
+		return nil, errFontSize
 	}
 	options.Features = slices.Clone(options.Features)
 	options.Variations = slices.Clone(options.Variations)
-	slices.SortFunc(options.Features, func(a, b Feature) int { return bytes.Compare([]byte(a.Tag), []byte(b.Tag)) })
-	slices.SortFunc(options.Variations, func(a, b Variation) int { return bytes.Compare([]byte(a.Tag), []byte(b.Tag)) })
-	f := &Font{source: s, options: options}
-	h := sha256.New()
-	h.Write(s.key[:])
-	writeNumbers(h, options.Size)
-	h.Write([]byte(options.Language.String()))
+	slices.SortFunc(options.Features, func(a, b Feature) int { return strings.Compare(a.Tag, b.Tag) })
+	slices.SortFunc(options.Variations, func(a, b Variation) int { return strings.Compare(a.Tag, b.Tag) })
+	font := new(Font)
+	font.source, font.options = s, options
+	digest := sha256.New()
+	digest.Write(s.key[:])
+	writeNumbers(digest, options.Size)
+	digest.Write([]byte(options.Language.String()))
 	if s.ttf != nil {
-		f.face = &etext.GoTextFace{Source: s.ttf, Size: options.Size, Language: options.Language}
+		font.face = new(etext.GoTextFace)
+		font.face.Source, font.face.Size, font.face.Language = s.ttf, options.Size, options.Language
 	}
-	for i, v := range options.Features {
-		tag, err := etext.ParseTag(v.Tag)
-		if err != nil || (i > 0 && options.Features[i-1].Tag == v.Tag) || f.face == nil {
-			return nil, errors.New("text: invalid/duplicate feature or non-TTF font")
-		}
-		f.face.SetFeature(tag, v.Value)
-		h.Write([]byte("F" + v.Tag))
-		writeNumbers(h, float64(v.Value))
+	if err := font.configureFeatures(digest); err != nil {
+		return nil, err
 	}
-	for i, v := range options.Variations {
-		tag, err := etext.ParseTag(v.Tag)
-		if err != nil || !finite(float64(v.Value)) || (i > 0 && options.Variations[i-1].Tag == v.Tag) || f.face == nil {
-			return nil, errors.New("text: invalid/duplicate variation or non-TTF font")
-		}
-		f.face.SetVariation(tag, v.Value)
-		h.Write([]byte("V" + v.Tag))
-		writeNumbers(h, float64(v.Value))
-	}
-	copy(f.key[:], h.Sum(nil))
-	if f.face != nil {
-		m := f.face.Metrics()
-		f.metrics = Metrics{m.HAscent, m.HDescent, m.HLineGap}
+	copy(font.key[:], digest.Sum(nil))
+	if font.face != nil {
+		metrics := font.face.Metrics()
+		font.metrics = Metrics{metrics.HAscent, metrics.HDescent, metrics.HLineGap}
 	} else {
 		scale := options.Size / (s.metrics.Ascent + s.metrics.Descent)
-		f.metrics = Metrics{s.metrics.Ascent * scale, s.metrics.Descent * scale, s.metrics.LineGap * scale}
+		font.metrics = Metrics{s.metrics.Ascent * scale, s.metrics.Descent * scale, s.metrics.LineGap * scale}
 	}
-	return f, nil
+
+	return font, nil
+}
+
+func (f *Font) configureFeatures(digest hash.Hash) error {
+	for index, feature := range f.options.Features {
+		tag, err := etext.ParseTag(feature.Tag)
+		if err != nil || (index > 0 && f.options.Features[index-1].Tag == feature.Tag) || f.face == nil {
+			return errFeature
+		}
+		f.face.SetFeature(tag, feature.Value)
+		digest.Write([]byte("F" + feature.Tag))
+		writeNumbers(digest, float64(feature.Value))
+	}
+	for index, variation := range f.options.Variations {
+		tag, err := etext.ParseTag(variation.Tag)
+		if err != nil || !finite(float64(variation.Value)) ||
+			(index > 0 && f.options.Variations[index-1].Tag == variation.Tag) || f.face == nil {
+			return errVariation
+		}
+		f.face.SetVariation(tag, variation.Value)
+		digest.Write([]byte("V" + variation.Tag))
+		writeNumbers(digest, float64(variation.Value))
+	}
+
+	return nil
 }
 
 // WithSize returns another immutable configuration sharing the source.
 func (f *Font) WithSize(size float64) (*Font, error) {
 	if f == nil {
-		return nil, errors.New("text: nil font")
+		return nil, errNilFont
 	}
 	options := f.options
 	options.Size = size
+
 	return f.source.NewFont(options)
 }
-func (f *Font) Size() float64    { return f.options.Size }
+
+// Size returns the configured pixel size.
+func (f *Font) Size() float64 { return f.options.Size }
+
+// Metrics returns detached baseline metrics in configured pixels.
 func (f *Font) Metrics() Metrics { return f.metrics }
 
 // Identity is a content/settings identity, not a process address or mutable face.
@@ -199,7 +243,7 @@ func (f *Font) Identity() [32]byte { return f.key }
 // retained layout. Empty text measures zero. Wrapping/caret queries use NewLayout.
 func (f *Font) Measure(value string, lineSpacing float64) (float64, float64, error) {
 	if f == nil || !utf8.ValidString(value) || len(value) > 1<<20 || !finite(lineSpacing) || lineSpacing < 0 {
-		return 0, 0, errors.New("text: invalid measurement input")
+		return 0, 0, errMeasurement
 	}
 	if value == "" {
 		return 0, 0, nil
@@ -207,8 +251,9 @@ func (f *Font) Measure(value string, lineSpacing float64) (float64, float64, err
 	if f.face != nil {
 		w, h := etext.Measure(value, f.face, lineSpacing)
 		if !finite(w) || !finite(h) {
-			return 0, 0, errors.New("text: nonfinite measurement")
+			return 0, 0, errMeasureExtent
 		}
+
 		return w, h, nil
 	}
 	width, count := 0.0, 0
@@ -217,7 +262,7 @@ func (f *Font) Measure(value string, lineSpacing float64) (float64, float64, err
 		for _, ch := range strings.TrimSuffix(line, "\r") {
 			glyph, ok := f.source.glyphs[ch]
 			if !ok {
-				return 0, 0, fmt.Errorf("text: bitmap font has no glyph %U", ch)
+				return 0, 0, fmt.Errorf("%w %U", errMissingGlyph, ch)
 			}
 			advance += glyph.Advance * f.options.Size / (f.source.metrics.Ascent + f.source.metrics.Descent)
 		}
@@ -225,8 +270,9 @@ func (f *Font) Measure(value string, lineSpacing float64) (float64, float64, err
 		count++
 	}
 	if !finite(width) {
-		return 0, 0, errors.New("text: nonfinite bitmap advance")
+		return 0, 0, errBitmapAdvance
 	}
+
 	return width, f.metrics.Ascent + f.metrics.Descent + float64(count-1)*lineSpacing, nil
 }
 
@@ -238,19 +284,22 @@ func (f *Font) CopyEngineFace() *etext.GoTextFace {
 	if f == nil || f.face == nil {
 		return nil
 	}
-	face := &etext.GoTextFace{Source: f.source.ttf, Size: f.options.Size, Language: f.options.Language}
+	face := new(etext.GoTextFace)
+	face.Source, face.Size, face.Language = f.source.ttf, f.options.Size, f.options.Language
 	for _, v := range f.options.Features {
 		face.SetFeature(etext.MustParseTag(v.Tag), v.Value)
 	}
 	for _, v := range f.options.Variations {
 		face.SetVariation(etext.MustParseTag(v.Tag), v.Value)
 	}
+
 	return face
 }
 
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 func validMetrics(m Metrics) bool {
-	return finite(m.Ascent+m.Descent+m.LineGap) && finite(m.Ascent) && finite(m.Descent) && finite(m.LineGap) && m.Ascent >= 0 && m.Descent >= 0 && m.Ascent+m.Descent > 0 && m.LineGap >= 0
+	return finite(m.Ascent+m.Descent+m.LineGap) && finite(m.Ascent) && finite(m.Descent) && finite(m.LineGap) &&
+		m.Ascent >= 0 && m.Descent >= 0 && m.Ascent+m.Descent > 0 && m.LineGap >= 0
 }
 func writeNumbers(h hash.Hash, values ...float64) {
 	var b [8]byte
