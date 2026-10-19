@@ -35,10 +35,12 @@ func DefaultRendererOptions() RendererOptions {
 // destination coordinates; it is intersected with the target's existing bounds.
 // Uncached is useful for one-shot content and fresh/cached acceptance comparisons.
 type DrawOptions struct {
-	GeoM     ebiten.GeoM
-	Filter   ebiten.Filter
-	Clip     *image.Rectangle
-	Uncached bool
+	GeoM   ebiten.GeoM
+	Filter ebiten.Filter
+	Clip   *image.Rectangle
+	// LocalClip clips layout pixels before placement without changing geometry.
+	LocalClip *image.Rectangle
+	Uncached  bool
 }
 
 type CacheStats struct {
@@ -124,10 +126,19 @@ func (r *Renderer) Draw(target *ebiten.Image, layout *Layout, palette Palette, o
 		}
 		target = target.SubImage(clip).(*ebiten.Image)
 	}
+	source, origin := entry.image, entry.origin
+	if options.LocalClip != nil {
+		clip := options.LocalClip.Sub(origin).Intersect(source.Bounds())
+		if clip.Empty() {
+			return nil
+		}
+		source = source.SubImage(clip).(*ebiten.Image)
+		origin = origin.Add(clip.Min)
+	}
 	op := &ebiten.DrawImageOptions{Filter: options.Filter}
-	op.GeoM.Translate(float64(entry.origin.X), float64(entry.origin.Y))
+	op.GeoM.Translate(float64(origin.X), float64(origin.Y))
 	op.GeoM.Concat(options.GeoM)
-	target.DrawImage(entry.image, op)
+	target.DrawImage(source, op)
 	return nil
 }
 

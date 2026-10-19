@@ -76,6 +76,11 @@ can be drawn by the host using returned rectangles.
 All coordinates are local pixels. The host owns screen-coordinate conversion,
 clipping eligibility, Z routing, focus, selection state, input and activation.
 
+DrawOptions.Clip is a destination-coordinate clip. LocalClip instead clips layout
+pixels before applying the placement transform, including nonzero ink origins.
+Neither changes retained query geometry; the host applies the corresponding clip
+when routing input. A clipped draw reuses the same raster as an unclipped draw.
+
 - `HitTestLocal` returns actual cluster advance regions (including spacing),
   source ranges and all intersecting nonempty annotation tags. It may return none.
 - `NearestCaret` returns a nearest supported cluster site, with Inside information.

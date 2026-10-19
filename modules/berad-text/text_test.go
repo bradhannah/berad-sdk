@@ -340,3 +340,55 @@ func TestContentLogAndLimits(t *testing.T) {
 		t.Fatal("invalid UTF-8 accepted")
 	}
 }
+
+func TestLocalClipPrecedesTransformAndRetainsRasterIdentity(t *testing.T) {
+	atlas := image.NewRGBA(image.Rect(0, 0, 3, 3))
+	for y := range 3 {
+		for x := range 3 {
+			atlas.SetRGBA(x, y, color.RGBA{255, 255, 255, 255})
+		}
+	}
+	s, err := NewBitmapSource(atlas, Metrics{Ascent: 2}, map[rune]Glyph{'X': {Region: atlas.Bounds(), Advance: 3, BearingY: -3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := s.NewFont(FontOptions{Size: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := fixtureLayout(t, []Span{{Text: "X", Font: f}}, LayoutOptions{})
+	if l.InkBounds().Min.Y != -1 {
+		t.Fatal(l.InkBounds())
+	}
+	r, _ := NewRenderer(DefaultRendererOptions())
+	defer r.Close()
+	full, clipped := ebiten.NewImage(20, 20), ebiten.NewImage(20, 20)
+	defer full.Deallocate()
+	defer clipped.Deallocate()
+	o := DrawOptions{}
+	o.GeoM.Scale(2, 2)
+	o.GeoM.Translate(4, 4)
+	if err := r.Draw(full, l, nil, o); err != nil {
+		t.Fatal(err)
+	}
+	clip := image.Rect(0, 0, 3, 2)
+	o.LocalClip = &clip
+	if err := r.Draw(clipped, l, nil, o); err != nil {
+		t.Fatal(err)
+	}
+	a, b := pixels(full), pixels(clipped)
+	for y := 0; y < 20; y++ {
+		for x := 0; x < 20; x++ {
+			want := a[(y*20+x)*4+3]
+			if y < 4 || y >= 8 {
+				want = 0
+			}
+			if b[(y*20+x)*4+3] != want {
+				t.Fatalf("local clip mismatch at %d,%d", x, y)
+			}
+		}
+	}
+	if r.Stats().Hits != 1 {
+		t.Fatal("clip changed raster identity")
+	}
+}
