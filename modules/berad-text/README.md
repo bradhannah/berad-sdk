@@ -16,7 +16,12 @@ The [standalone example](examples/panel/main.go) is a complete Ebitengine host w
 supplied Go Regular font data. The [independent consumer](testdata/consumer/consumer_test.go)
 also supplies a synthetic bitmap icon, changes paint, wraps content and exercises
 geometry and ownership using only the public API. Both compile in the registered
-checks. Run `go run ./examples/panel` for an interactive rendering demonstration.
+checks. Run `go run ./examples/panel` for an interactive rendering demonstration:
+click the icon or input field, Enter to submit, Escape to leave editing, Space to
+toggle a blocking panel, T to change paint and +/- to change size. Resize to reflow.
+All input/stacking/editing is example-host code; the library only returns geometry.
+This small example uses rune-wise deletion and committed input characters, not a
+complete IME, grapheme editor or widget framework.
 
 Construction order is `ParseFont` / `NewBitmapSource`, `Source.NewFont`,
 `NewContent`, `NewLayout`, `NewRenderer`, then `Renderer.Draw`. Check returned errors
