@@ -252,7 +252,7 @@ func (catalog *Catalog) addLibraryRecordings(library authoring.LibraryDocument, 
 			asset.ListeningReview, asset.LoopReview = CatalogUnreviewed, CatalogUnreviewed
 		} else {
 			var err error
-			asset, err = InspectAsset(recordingID, path, files, options)
+			asset, err = inspectAsset(recordingID, path, files, options)
 			if err != nil {
 				return err
 			}
@@ -286,7 +286,7 @@ func (catalog *Catalog) addLibraryRecordings(library authoring.LibraryDocument, 
 		if entry.IsDir() || registeredPaths[path] || formatName(path) == provenanceUnknown {
 			return nil
 		}
-		asset, err := InspectAsset("unregistered/"+path, path, files, options)
+		asset, err := inspectAsset("unregistered/"+path, path, files, options)
 		if err != nil {
 			return err
 		}

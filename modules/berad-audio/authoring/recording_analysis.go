@@ -11,7 +11,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"slices"
 
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio"
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/internal/pcm"
@@ -44,10 +43,6 @@ func (clip *RecordingAudio) Path() string { return clip.path }
 
 // DurationMs returns the full decoded source duration in milliseconds.
 func (clip *RecordingAudio) DurationMs() int64 { return clip.durationMs }
-
-// Peaks returns a detached copy of the source's stereo peak buckets. Editing the
-// returned slice cannot change silence suggestions, calibration or playback.
-func (clip *RecordingAudio) Peaks() []float64 { return slices.Clone(clip.peaks) }
 
 // PeakBetween returns the greatest peak in the 10 ms buckets intersecting the
 // inclusive source-time range. Bounds are clipped to the source; empty/reversed

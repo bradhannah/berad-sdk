@@ -16,7 +16,7 @@ on `main`. Consumers
 must pin a remotely available reviewed revision; there are no stable SDK version
 releases. **Berad Text** is also available on `main`,
 with supplied fonts, styled layout/local geometry and native-render consumer
-checks. **Berad Graphics** has an experimental candidate on `feat/berad-graphics`,
+checks. **Berad Graphics** is available on `main`,
 with supplied images, procedural effects, masks and explicit Ebitengine resource
 ownership. Pin only actually available reviewed revisions.
 Standalone version-qualified tools installation awaits reviewed default-branch
@@ -29,7 +29,7 @@ an eight-second native startup window, and controlled process cleanup. It requir
 a desktop backend and is separate from physical keyboard/mouse/IME acceptance.
 The [tool catalog](tools/README.md) describes the separately versioned tools layout.
 Use `make graphics-check`, `make graphics-demo`, and `make graphics-demo-smoke`
-for the graphics candidate and its synthetic independent atelier example.
+for graphics and its synthetic independent atelier example.
 
 ## Converting an existing subsystem?
 
@@ -55,6 +55,8 @@ No private checkout, service, or original game installation is required.
 ## Principles
 
 - Expose only capabilities needed by supported consumers.
+- Count real SDK tool workflows as consumers; demos and tests alone do not justify
+  new runtime features. Add future-game capabilities when their concrete need exists.
 - Prefer straightforward Ebitengine integration over speculative abstraction.
 - Keep game policy in game-owned adapters; accept explicitly supplied assets.
 - Specify resource ownership, defaults, failure behavior, and compatibility.

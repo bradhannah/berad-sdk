@@ -1,6 +1,7 @@
 package consumer_test
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"os"
@@ -54,51 +55,65 @@ func TestIndependentDeviceOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close()
-	a, err := first.Derive(source, graphics.TintRGB(100, 200, 50))
+	a, err := first.Derive(source, graphics.RGBGain(.5, graphics.Selection{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := second.Derive(source, graphics.TintRGB(100, 200, 50))
+	b, err := second.Derive(source, graphics.RGBGain(.5, graphics.Selection{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	first.Close()
-	target.DrawImage(a, nil)
-	target.DrawImage(b, nil)
-	buffer := make([]byte, 32*32*4)
-	target.ReadPixels(buffer)
-	if buffer[0] != 100 || buffer[1] != 200 || buffer[3] != 255 {
-		t.Fatal("owner closure affected borrower or another owner")
+	for _, result := range []*ebiten.Image{a, b} {
+		target.Clear()
+		target.DrawImage(result, nil)
+		buffer := make([]byte, 32*32*4)
+		target.ReadPixels(buffer)
+		for y := range 32 {
+			for x := range 32 {
+				want := []byte{0, 0, 0, 0}
+				if x < 7 && y < 23 {
+					want = []byte{127, 127, 127, 255}
+				}
+				if !bytes.Equal(buffer[(y*32+x)*4:][:4], want) {
+					t.Fatalf("owner closure affected independent result at %d,%d", x, y)
+				}
+			}
+		}
 	}
 }
 
-func TestIndependentProceduralSignage(t *testing.T) {
-	source := image.NewRGBA(image.Rect(10, 20, 17, 43))
-	source.SetRGBA(13, 30, color.RGBA{R: 90, G: 20, A: 128})
-	frozen, err := graphics.NewImage(source)
+func TestIndependentPixelsAndOwnedNativePadding(t *testing.T) {
+	pixels := make([]byte, 7*23*4)
+	copy(pixels[(10*7+3)*4:], []byte{90, 20, 0, 128})
+	frozen, err := graphics.NewPixels(7, 23, pixels)
 	if err != nil {
 		t.Fatal(err)
 	}
-	framed, err := frozen.Pad(graphics.Insets{Left: 2, Top: 1, Right: 3, Bottom: 1})
+	animated, err := frozen.Apply(graphics.ScrollY(-27))
 	if err != nil {
 		t.Fatal(err)
 	}
-	animated, err := framed.Apply(graphics.Rise(3, graphics.Selection{}), graphics.Wave(1.1, 2.4, .5, graphics.Selection{}), graphics.ScrollY(-27), graphics.Outline(color.RGBA{G: 180, A: 255}, 0))
+	want := make([]byte, len(pixels))
+	copy(want[(6*7+3)*4:], []byte{90, 20, 0, 128})
+	if !bytes.Equal(animated.Pixels(), want) || !bytes.Equal(frozen.Pixels(), pixels) {
+		t.Fatal("scroll pixels or immutable source")
+	}
+	source := ebiten.NewImageFromImage(animated.CopyRGBA())
+	defer source.Deallocate()
+	owned, err := backend.CopyRegion(source, source.Bounds(), graphics.Insets{Left: 2, Top: 1, Right: 3, Bottom: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if animated.Bounds() != image.Rect(0, 0, 12, 25) || source.RGBAAt(13, 30).R != 90 {
-		t.Fatal("host source/geometry changed")
+	defer owned.Deallocate()
+	if owned.Bounds() != image.Rect(0, 0, 12, 25) {
+		t.Fatal("native padded geometry")
 	}
-	frame, err := graphics.NewFrame(animated, image.Pt(19, 31), image.Pt(3, 4), image.Pt(9, 30))
-	if err != nil {
-		t.Fatal(err)
-	}
-	sequence, err := graphics.NewAnimation([]graphics.Frame{frame}, 90)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sequence.At(-1000).Anchor() != image.Pt(9, 30) {
-		t.Fatal("host anchor lost")
+	actual, expected := make([]byte, 12*25*4), make([]byte, 12*25*4)
+	copy(expected[(7*12+5)*4:], []byte{90, 20, 0, 128})
+	source.Clear()
+	owned.ReadPixels(actual)
+	if !bytes.Equal(actual, expected) {
+		t.Fatal("native copy did not preserve owned pixels")
 	}
 }

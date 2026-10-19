@@ -61,7 +61,8 @@ the runtime contract below remains authoritative for playback.
 
 Supply a playback `Definition`, an asset `fs.FS`, and an explicit encoded-byte
 budget to `NewLibrary`. Metadata/windows/slices and unique asset bytes are frozen.
-`Definition()` returns a detached view. Encoded bytes are eager-resident; decoded
+Keep the caller's definition if metadata inspection is needed; the runtime library
+does not expose its frozen definition. Encoded bytes are eager-resident; decoded
 streams are created per voice. The budget is not a total audio heap guarantee.
 
 ```go
@@ -99,10 +100,10 @@ result, err := owner.Play("hangar/motor", request)
 - `Voice.Stop` affects one instance; `Owner.Release` terminally rejects new play
   and releases its voices; `Owner.Close` finishes its tails. `StopCue` is explicitly
   cue-wide across owners. Zero/stale voice handles are safe.
-- `Voice.SetGain`, `Pause`, `Resume`, `Seek` and `Position` provide presentation
-  control without reopening retired voices. Pause retains the decoder and freezes
-  its envelope; category changes still update a paused voice's mix. Positions are
-  relative to the selected window. Invalid seeks do not change it.
+- `Voice` exposes per-instance cleanup and observation through `Stop` and `Status`.
+  Request gain and fades are selected at admission; category volume remains live.
+  Finite music transport controls belong to `MusicPlayer`; standalone editor
+  transport controls belong to the tools module's `audition.Voice`.
 - `Voice.Status` distinguishes playing, paused, releasing, completed, stopped,
   evicted and failed states. Retirement stores status without retaining its decoder.
   Unexpected loop completion is a failure, unlike healthy finite completion.
@@ -153,9 +154,9 @@ document/project layer described below, not this source-file API.
   streamed 44.1 kHz stereo signed 16-bit PCM with 10 ms waveform/energy buckets.
   The source retains encoded data and buckets, not the whole decoded recording.
   Each decoder receives a private copy; this input cap is not a total heap budget.
-- `Path`, `DurationMs` and `Fingerprint` are scalar observations. `Peaks` returns
-  a detached slice, while `PeakBetween` inspects inclusive source-time buckets
-  without exposing storage. Source analysis and verification are observational.
+- `Path`, `DurationMs` and `Fingerprint` are scalar observations. `PeakBetween`
+  inspects inclusive source-time buckets without exposing storage or copying all
+  peaks. Source analysis and verification are observational.
 - `SuggestedWindow` proposes a -40 dB threshold with edge padding. It never
   publishes edits. `PlaybackWindow` uses source milliseconds with an exclusive
   end, matching the existing authoring format. Nil means the entire source.
@@ -312,6 +313,21 @@ game facade nor its JSON/media is a dependency or part of this module.
 
 ## Validation
 
+### Experimental API compatibility
+
+The production-surface cleanup removes runtime `Voice.SetGain`, `Pause`, `Resume`,
+`Seek`, `Position` and `ErrVoiceClosed`; `Library.Definition()`;
+`RecordingAudio.Peaks()`; `LibraryEditor.RoutingChanged` and `DuplicateClip`; and
+`EditorOptions.NewRecordingFamily`. These are experimental Go API breaks with no
+remaining Redux or SDK-tool production callers. Input freezing and playback state
+diagnostics remain; use `PeakBetween` for waveform queries and the source-bound
+`BeginRecordingRegion` / `DuplicateRecordingRegion` transaction for duplication.
+`AddRecording` still creates an `unreviewed` empty slot. Music and audition controls,
+schema-3 documents, authored audio and playback behavior remain supported.
+Update runtime and tool dependencies together when adopting this revision.
+
+### Checks and evidence limits
+
 From the SDK checkout, use `python3 -I -B scripts/check.py plan`, then
 `python3 -I -B scripts/check.py quality-gate`. Provision the Go toolchain and
 dependencies before these offline checks. The checker isolates the module from
@@ -321,5 +337,10 @@ that isolated proof. See the [repository validation policy](https://github.com/b
 
 Game-owned bridge tests remain in Redux and are distinct from independent SDK
 acceptance. Controlled transports and generated PCM/WAV tests are not native
-listening proof. The module's MIT source notice is in [LICENSE](LICENSE);
+listening proof. Numerical calibration regressions cover stereo RMS, sample-peak
+limiting, a 1 kHz mono/stereo gated-loudness reference and relative-gate exclusion
+of a quiet tail. They do not certify the meter across frequencies or prove
+true-peak/headroom or listening quality. Native MP3/OGG and platform acceptance
+remain separate from the generated-WAV backend regression.
+The module's MIT source notice is in [LICENSE](LICENSE);
 production game media are neither included nor relicensed by this extraction.

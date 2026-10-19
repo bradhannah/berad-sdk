@@ -69,6 +69,15 @@ AUTO approval uses the shared authoring CalibrationDraft transaction.
 All exported entry points are experimental. Runtime controls do not open terminal
 UI; tools do not own game state, persisted player settings or production media.
 
+`project.Config` remains public as the typed version-1 descriptor for integrations
+that generate JSON project files. Its fields define the same schema consumed by
+`project.Open`; retaining the type adds no second loader or configuration mechanism.
+The production-surface cleanup makes the catalog's former `InspectAsset` helper
+private: use `catalog.Build` for validated inventory construction. This is an
+experimental Go API break, not a catalog JSON change. Adopt the accompanying
+[runtime API changes](../../modules/berad-audio/README.md#experimental-api-compatibility)
+with the matching runtime dependency; editor, catalog and probe workflows remain.
+
 ## Reusable audition
 
 `audition.NewVoice` opens no device until Play. Controls are event-loop serialized;

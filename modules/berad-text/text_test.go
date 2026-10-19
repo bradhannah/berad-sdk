@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"os"
-	"reflect"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -140,7 +139,7 @@ func TestScaledDrawActuallyReusesRasterAndPaintDoesNotChangeLayout(t *testing.T)
 	}
 }
 
-func TestRenderingMatchesEngineAndUncachedPixels(t *testing.T) {
+func TestRenderingMatchesEngineAndFreshRendererPixels(t *testing.T) {
 	f := fixtureFont(t, 22)
 	l := fixtureLayout(t, []Span{{Text: "Agj café", Font: f}}, LayoutOptions{})
 	r, _ := NewRenderer(DefaultRendererOptions())
@@ -154,9 +153,20 @@ func TestRenderingMatchesEngineAndUncachedPixels(t *testing.T) {
 	if err := r.Draw(a, l, nil, o); err != nil {
 		t.Fatal(err)
 	}
-	o.Uncached = true
-	if err := r.Draw(b, l, nil, o); err != nil {
+	a.Clear()
+	if err := r.Draw(a, l, nil, o); err != nil {
 		t.Fatal(err)
+	}
+	fresh, err := NewRenderer(DefaultRendererOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Close()
+	if err := fresh.Draw(b, l, nil, o); err != nil {
+		t.Fatal(err)
+	}
+	if r.Stats().Hits != 1 {
+		t.Fatal("pixel comparison must exercise a retained cache hit")
 	}
 	eo := &etext.DrawOptions{}
 	eo.GeoM.Translate(12, 10)
@@ -169,7 +179,7 @@ func TestRenderingMatchesEngineAndUncachedPixels(t *testing.T) {
 	}
 }
 
-func TestBitmapSnapshotNonzeroOriginAlphaAndMixedBaseline(t *testing.T) {
+func TestBitmapSnapshotNonzeroOriginAndAlpha(t *testing.T) {
 	atlas := image.NewRGBA(image.Rect(10, 20, 16, 23))
 	for y := 20; y < 23; y++ {
 		for x := 10; x < 13; x++ {
@@ -184,7 +194,7 @@ func TestBitmapSnapshotNonzeroOriginAlphaAndMixedBaseline(t *testing.T) {
 	clear(atlas.Pix)
 	delete(desc, 'X')
 	f, _ := s.NewFont(FontOptions{Size: 6})
-	l := fixtureLayout(t, []Span{{Text: "X X", Font: f, Paint: "ink", Tag: "object"}}, LayoutOptions{})
+	l := fixtureLayout(t, []Span{{Text: "X X", Font: f, Paint: "ink"}}, LayoutOptions{})
 	if l.Bounds().Width() != 20 {
 		t.Fatalf("advance: %v", l.Bounds())
 	}
@@ -198,10 +208,6 @@ func TestBitmapSnapshotNonzeroOriginAlphaAndMixedBaseline(t *testing.T) {
 	p := pixels(dst)
 	if p[0] < 63 || p[0] > 65 || p[1] != 0 || p[3] < 63 || p[3] > 65 {
 		t.Fatalf("incorrect snapshot/tint alpha: %v", p[:4])
-	}
-	hits := l.HitTestLocal(Point{1, 1})
-	if len(hits) != 1 || !reflect.DeepEqual(hits[0].Tags, []string{"object"}) {
-		t.Fatalf("hit: %+v", hits)
 	}
 	if _, err := NewLayout(&Content{text: "Q", spans: []contentSpan{{Span: Span{Text: "Q", Font: f}, end: 1}}}, LayoutOptions{}); err == nil {
 		t.Fatal("missing bitmap glyph accepted")
@@ -234,13 +240,6 @@ func TestWrappingSourceRangesAndCaretAffinity(t *testing.T) {
 			}
 		}
 	}
-	if len(l.HitTestLocal(Point{999, 999})) != 0 {
-		t.Fatal("outside hit activated content")
-	}
-	nearest, err := l.NearestCaret(Point{999, 999})
-	if err != nil || nearest.Inside {
-		t.Fatalf("nearest/outside: %+v %v", nearest, err)
-	}
 	if _, err := l.RangeRects(-1, 2); err == nil {
 		t.Fatal("invalid range accepted")
 	}
@@ -249,9 +248,9 @@ func TestWrappingSourceRangesAndCaretAffinity(t *testing.T) {
 func TestPaintBoundariesDoNotSplitShapingAndRangesReportClusters(t *testing.T) {
 	f := fixtureFont(t, 24)
 	a := fixtureLayout(t, []Span{{Text: "office e\u0301", Font: f}}, LayoutOptions{})
-	b := fixtureLayout(t, []Span{{Text: "of", Font: f, Paint: "a", Tag: "one"}, {Text: "fice e\u0301", Font: f, Paint: "b", Tag: "two"}}, LayoutOptions{})
+	b := fixtureLayout(t, []Span{{Text: "of", Font: f, Paint: "a"}, {Text: "fice e\u0301", Font: f, Paint: "b"}}, LayoutOptions{})
 	if a.Bounds() != b.Bounds() || len(a.glyphs) != len(b.glyphs) {
-		t.Fatal("paint/tag boundary changed shaping")
+		t.Fatal("paint boundary changed shaping")
 	}
 	for i := range a.glyphs {
 		if a.glyphs[i].glyph.ImageBounds != b.glyphs[i].glyph.ImageBounds {
@@ -310,7 +309,7 @@ func TestCacheLimitsCloseAndRetainedGeometry(t *testing.T) {
 	}
 }
 
-func TestContentLogAndLimits(t *testing.T) {
+func TestContentSnapshotAndLimits(t *testing.T) {
 	f := fixtureFont(t, 12)
 	spans := []Span{{Text: "é", Font: f}}
 	c, err := NewContent(spans)
@@ -321,17 +320,10 @@ func TestContentLogAndLimits(t *testing.T) {
 	if c.Text() != "é" {
 		t.Fatal("content alias")
 	}
-	log, _ := NewLog(2, 4)
-	log.Append(c)
-	log.Append(c)
-	dropped, err := log.Append(c)
-	if err != nil || dropped != 1 || len(log.Entries()) != 2 {
-		t.Fatalf("log: %d %v", dropped, err)
-	}
-	entries := log.Entries()
-	entries[0] = nil
-	if log.Entries()[0] == nil {
-		t.Fatal("log view aliases")
+	view := c.Spans()
+	view[0].Text = "changed again"
+	if c.Spans()[0].Text != "é" {
+		t.Fatal("span view aliases")
 	}
 	if _, err := NewLayout(c, LayoutOptions{MaxWork: 1}); err == nil {
 		t.Fatal("work budget ignored")
@@ -357,9 +349,6 @@ func TestLocalClipPrecedesTransformAndRetainsRasterIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := fixtureLayout(t, []Span{{Text: "X", Font: f}}, LayoutOptions{})
-	if l.InkBounds().Min.Y != -1 {
-		t.Fatal(l.InkBounds())
-	}
 	r, _ := NewRenderer(DefaultRendererOptions())
 	defer r.Close()
 	full, clipped := ebiten.NewImage(20, 20), ebiten.NewImage(20, 20)

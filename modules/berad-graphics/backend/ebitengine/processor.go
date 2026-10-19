@@ -44,7 +44,6 @@ type derivedKey struct {
 	count      int
 	silhouette bool
 	threshold  byte
-	padding    graphics.Insets
 }
 
 type derivedEntry struct {
@@ -54,11 +53,10 @@ type derivedEntry struct {
 	element *list.Element
 }
 
-// Stats returns cache-held payload and lifetime counters, never servicing rendering.
+// Stats reports cache-held payload, never servicing rendering.
 type Stats struct {
 	Sources, Derived          int
 	SourceBytes, DerivedBytes int64
-	Hits, Misses, Evictions   uint64
 }
 
 // Processor snapshots explicitly borrowed immutable GPU sources. Call Forget
@@ -91,11 +89,11 @@ func (processor *Processor) ready() bool {
 	return processor != nil && !processor.closed && processor.sources != nil
 }
 
-// Bounds handles only Ebitengine's known disposed-image panic; other programming
+// imageBounds handles only Ebitengine's known disposed-image panic; other programming
 // or initialization failures are not converted to successful fallback artwork.
 //
 //nolint:nonamedreturns // Deferred disposed-image recovery must return an explicit error.
-func Bounds(source *ebiten.Image) (bounds image.Rectangle, err error) {
+func imageBounds(source *ebiten.Image) (bounds image.Rectangle, err error) {
 	if source == nil {
 		return bounds, fmt.Errorf("%w: nil image", graphics.ErrInvalid)
 	}
@@ -111,13 +109,13 @@ func Bounds(source *ebiten.Image) (bounds image.Rectangle, err error) {
 	return source.Bounds(), nil
 }
 
-// Snapshot imports a borrowed immutable image into a bounded CPU snapshot cache.
+// snapshot imports a borrowed immutable image into a bounded CPU snapshot cache.
 // Readback requires a running Ebitengine loop. Snapshots survive processor closure.
-func (processor *Processor) Snapshot(source *ebiten.Image) (*graphics.Image, error) {
+func (processor *Processor) snapshot(source *ebiten.Image) (*graphics.Image, error) {
 	if !processor.ready() {
 		return nil, ErrClosed
 	}
-	bounds, err := Bounds(source)
+	bounds, err := imageBounds(source)
 	if err != nil {
 		return nil, err
 	}
@@ -153,35 +151,16 @@ func (processor *Processor) Snapshot(source *ebiten.Image) (*graphics.Image, err
 
 // Derive processes a borrowed immutable GPU source, returning a read-only result.
 func (processor *Processor) Derive(source *ebiten.Image, operations ...graphics.Operation) (*ebiten.Image, error) {
-	snapshot, err := processor.Snapshot(source)
+	snapshot, err := processor.snapshot(source)
 	if err != nil {
 		return nil, err
 	}
 
-	return processor.DeriveImage(snapshot, operations...)
+	return processor.deriveImage(snapshot, operations...)
 }
 
-// PadAndDerive includes explicit padding in cache identity before applying effects.
-// Sources and returned images follow the same read-only borrowing contract as Derive.
-func (processor *Processor) PadAndDerive(
-	source *ebiten.Image, padding graphics.Insets, operations ...graphics.Operation,
-) (*ebiten.Image, error) {
-	snapshot, err := processor.Snapshot(source)
-	if err != nil {
-		return nil, err
-	}
-	if len(operations) > maximumOperations {
-		return nil, fmt.Errorf("%w: operation limit", graphics.ErrInvalid)
-	}
-	var key derivedKey
-	key.source, key.padding, key.count = snapshot, padding, len(operations)
-	copy(key.operations[:], operations)
-
-	return processor.result(key)
-}
-
-// DeriveImage uses a frozen CPU source and the full ordered operation specification.
-func (processor *Processor) DeriveImage(
+// deriveImage uses a frozen CPU source and the full ordered operation specification.
+func (processor *Processor) deriveImage(
 	source *graphics.Image, operations ...graphics.Operation,
 ) (*ebiten.Image, error) {
 	if !processor.ready() {
@@ -199,7 +178,7 @@ func (processor *Processor) DeriveImage(
 
 // Silhouette caches binary occupancy using the same bounded derived-image store.
 func (processor *Processor) Silhouette(source *ebiten.Image, threshold byte) (*ebiten.Image, error) {
-	snapshot, err := processor.Snapshot(source)
+	snapshot, err := processor.snapshot(source)
 	if err != nil {
 		return nil, err
 	}
@@ -212,21 +191,10 @@ func (processor *Processor) Silhouette(source *ebiten.Image, threshold byte) (*e
 func (processor *Processor) result(key derivedKey) (*ebiten.Image, error) {
 	if cached := processor.derived[key]; cached != nil {
 		processor.derivedLRU.MoveToFront(cached.element)
-		processor.stats.Hits++
 
 		return cached.image, nil
 	}
-	processor.stats.Misses++
-	prepared := key.source
-	var noPadding graphics.Insets
-	if key.padding != noPadding {
-		var err error
-		prepared, err = prepared.Pad(key.padding)
-		if err != nil {
-			return nil, fmt.Errorf("prepare padded image: %w", err)
-		}
-	}
-	result, err := prepared.Apply(key.operations[:key.count]...)
+	result, err := key.source.Apply(key.operations[:key.count]...)
 	if err != nil {
 		return nil, fmt.Errorf("derive image: %w", err)
 	}
@@ -261,7 +229,6 @@ func (processor *Processor) evictSource() {
 	delete(processor.sources, entry.source)
 	processor.sourceLRU.Remove(element)
 	processor.stats.SourceBytes -= int64(entry.snapshot.Bytes())
-	processor.stats.Evictions++
 }
 
 func (processor *Processor) evictDerived() {
@@ -273,7 +240,6 @@ func (processor *Processor) evictDerived() {
 	delete(processor.derived, entry.key)
 	processor.derivedLRU.Remove(element)
 	processor.stats.DerivedBytes -= entry.bytes
-	processor.stats.Evictions++
 }
 
 // Forget retires a source snapshot after explicit host mutation. Previously
@@ -298,7 +264,7 @@ func (processor *Processor) Forget(source *ebiten.Image) {
 	}
 }
 
-// Stats returns detached cache-held payload and counters.
+// Stats returns detached cache-held entry counts and payload.
 func (processor *Processor) Stats() Stats {
 	result := processor.stats
 	result.Sources, result.Derived = len(processor.sources), len(processor.derived)
@@ -322,25 +288,4 @@ func (processor *Processor) Close() {
 	}
 	processor.Clear()
 	processor.closed = true
-}
-
-// DrawFrame applies explicit frame origin/anchor before the supplied host transform.
-func (processor *Processor) DrawFrame(
-	target *ebiten.Image, frame graphics.Frame, options ebiten.DrawImageOptions,
-) error {
-	image, err := processor.DeriveImage(frame.Image())
-	if err != nil {
-		return err
-	}
-	if target == nil {
-		return fmt.Errorf("%w: target required", graphics.ErrInvalid)
-	}
-	var placement ebiten.GeoM
-	offset := frame.Offset().Sub(frame.Anchor())
-	placement.Translate(float64(offset.X), float64(offset.Y))
-	placement.Concat(options.GeoM)
-	options.GeoM = placement
-	target.DrawImage(image, &options)
-
-	return nil
 }

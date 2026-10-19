@@ -82,11 +82,11 @@ func TestLogWaveformMakesQuietAudioVisibleAndPreservesDigitalSilence(t *testing.
 	clip, err := model.doc.LoadRecording(context.Background(), path)
 	require.NoError(t, err)
 	model.clip = clip
-	peaks := clip.Peaks()
+	peak := clip.PeakBetween(0, clip.DurationMs())
 	voice := model.preview.(*fakeVoice)
 	beforeGain := voice.gain
 	model.drawWaveform(audio.PlaybackWindow{StartMs: 0, EndMs: 40}, 0, 0, 40, 40, height)
-	require.Equal(t, peaks, clip.Peaks())
+	require.Equal(t, peak, clip.PeakBetween(0, clip.DurationMs()))
 	require.Equal(t, beforeGain, voice.gain, "display scaling must never change playback gain")
 	require.False(t, model.doc.Dirty())
 }

@@ -27,8 +27,7 @@ var (
 	errBitmapGlyph   = errors.New("text: invalid bitmap glyph")
 	errMissingGlyph  = errors.New("text: bitmap font has no glyph")
 	errFontSize      = errors.New("text: font requires a source and finite size in (0,4096]")
-	errFeature       = errors.New("text: invalid/duplicate feature or non-TTF font")
-	errVariation     = errors.New("text: invalid/duplicate variation or non-TTF font")
+	errFontMetrics   = errors.New("text: scaled font metrics must be finite and nonnegative")
 	errNilFont       = errors.New("text: nil font")
 	errMeasurement   = errors.New("text: invalid measurement input")
 	errMeasureExtent = errors.New("text: nonfinite measurement")
@@ -52,34 +51,18 @@ type Metrics struct{ Ascent, Descent, LineGap float64 }
 
 // Glyph describes a bitmap region in the supplied image's coordinate system.
 // BearingY is the top edge relative to the baseline (usually negative Ascent).
-// Empty regions with a positive advance represent spaces.
+// Empty regions with a positive advance represent spaces. Bitmap pixels always
+// receive the supplied paint tint and alpha.
 type Glyph struct {
 	Region                      image.Rectangle
 	Advance, BearingX, BearingY float64
-	// Colored preserves source RGB and applies only paint alpha (e.g. inline icons).
-	Colored bool
-}
-
-// Feature and Variation select OpenType settings without exposing mutable faces.
-type Feature struct {
-	Tag   string
-	Value uint32
-}
-
-// Variation selects a finite OpenType axis value by tag.
-type Variation struct {
-	Tag   string
-	Value float32
 }
 
 // FontOptions describe an immutable sized instance. Size is in pixels. The zero
-// Language uses the engine default; text layout is horizontal. Feature/variation
-// slices are copied and canonicalized; duplicate tags are rejected.
+// Language uses the engine default; text layout is horizontal.
 type FontOptions struct {
-	Size       float64
-	Language   language.Tag
-	Features   []Feature
-	Variations []Variation
+	Size     float64
+	Language language.Tag
 }
 
 // Font is an immutable sized font. Equivalent source/settings have identical
@@ -144,11 +127,6 @@ func NewBitmapSource(atlas image.Image, metrics Metrics, glyphs map[rune]Glyph) 
 		glyph := source.glyphs[character]
 		writeNumbers(digest, float64(character), float64(glyph.Region.Min.X), float64(glyph.Region.Min.Y),
 			float64(glyph.Region.Max.X), float64(glyph.Region.Max.Y), glyph.Advance, glyph.BearingX, glyph.BearingY)
-		if glyph.Colored {
-			digest.Write([]byte{1})
-		} else {
-			digest.Write([]byte{0})
-		}
 	}
 	copy(source.key[:], digest.Sum(nil))
 
@@ -166,10 +144,6 @@ func (s *Source) NewFont(options FontOptions) (*Font, error) {
 	if s == nil || (s.ttf == nil && s.bitmap == nil) || !finite(options.Size) || options.Size <= 0 || options.Size > 4096 {
 		return nil, errFontSize
 	}
-	options.Features = slices.Clone(options.Features)
-	options.Variations = slices.Clone(options.Variations)
-	slices.SortFunc(options.Features, func(a, b Feature) int { return strings.Compare(a.Tag, b.Tag) })
-	slices.SortFunc(options.Variations, func(a, b Variation) int { return strings.Compare(a.Tag, b.Tag) })
 	font := new(Font)
 	font.source, font.options = s, options
 	digest := sha256.New()
@@ -180,43 +154,22 @@ func (s *Source) NewFont(options FontOptions) (*Font, error) {
 		font.face = new(etext.GoTextFace)
 		font.face.Source, font.face.Size, font.face.Language = s.ttf, options.Size, options.Language
 	}
-	if err := font.configureFeatures(digest); err != nil {
-		return nil, err
-	}
 	copy(font.key[:], digest.Sum(nil))
 	if font.face != nil {
 		metrics := font.face.Metrics()
 		font.metrics = Metrics{metrics.HAscent, metrics.HDescent, metrics.HLineGap}
 	} else {
 		scale := options.Size / (s.metrics.Ascent + s.metrics.Descent)
+		if !finite(scale) || scale <= 0 {
+			return nil, errFontMetrics
+		}
 		font.metrics = Metrics{s.metrics.Ascent * scale, s.metrics.Descent * scale, s.metrics.LineGap * scale}
+	}
+	if !validMetrics(font.metrics) {
+		return nil, errFontMetrics
 	}
 
 	return font, nil
-}
-
-func (f *Font) configureFeatures(digest hash.Hash) error {
-	for index, feature := range f.options.Features {
-		tag, err := etext.ParseTag(feature.Tag)
-		if err != nil || (index > 0 && f.options.Features[index-1].Tag == feature.Tag) || f.face == nil {
-			return errFeature
-		}
-		f.face.SetFeature(tag, feature.Value)
-		digest.Write([]byte("F" + feature.Tag))
-		writeNumbers(digest, float64(feature.Value))
-	}
-	for index, variation := range f.options.Variations {
-		tag, err := etext.ParseTag(variation.Tag)
-		if err != nil || !finite(float64(variation.Value)) ||
-			(index > 0 && f.options.Variations[index-1].Tag == variation.Tag) || f.face == nil {
-			return errVariation
-		}
-		f.face.SetVariation(tag, variation.Value)
-		digest.Write([]byte("V" + variation.Tag))
-		writeNumbers(digest, float64(variation.Value))
-	}
-
-	return nil
 }
 
 // WithSize returns another immutable configuration sharing the source.
@@ -239,24 +192,25 @@ func (f *Font) Metrics() Metrics { return f.metrics }
 // Identity is a content/settings identity, not a process address or mutable face.
 func (f *Font) Identity() [32]byte { return f.key }
 
-// Measure returns horizontal advances and natural height without constructing a
-// retained layout. Empty text measures zero. Wrapping/caret queries use NewLayout.
-func (f *Font) Measure(value string, lineSpacing float64) (float64, float64, error) {
-	if f == nil || !utf8.ValidString(value) || len(value) > 1<<20 || !finite(lineSpacing) || lineSpacing < 0 {
+// Measure returns horizontal advances and height using the engine's zero-spacing
+// measurement convention. Empty text measures zero. Use NewLayout for naturally
+// spaced multiline geometry, wrapping and caret queries.
+func (f *Font) Measure(value string) (float64, float64, error) {
+	if f == nil || !utf8.ValidString(value) || len(value) > 1<<20 {
 		return 0, 0, errMeasurement
 	}
 	if value == "" {
 		return 0, 0, nil
 	}
 	if f.face != nil {
-		w, h := etext.Measure(value, f.face, lineSpacing)
+		w, h := etext.Measure(value, f.face, 0)
 		if !finite(w) || !finite(h) {
 			return 0, 0, errMeasureExtent
 		}
 
 		return w, h, nil
 	}
-	width, count := 0.0, 0
+	width := 0.0
 	for _, line := range strings.Split(value, "\n") {
 		advance := 0.0
 		for _, ch := range strings.TrimSuffix(line, "\r") {
@@ -267,13 +221,12 @@ func (f *Font) Measure(value string, lineSpacing float64) (float64, float64, err
 			advance += glyph.Advance * f.options.Size / (f.source.metrics.Ascent + f.source.metrics.Descent)
 		}
 		width = max(width, advance)
-		count++
 	}
 	if !finite(width) {
 		return 0, 0, errBitmapAdvance
 	}
 
-	return width, f.metrics.Ascent + f.metrics.Descent + float64(count-1)*lineSpacing, nil
+	return width, f.metrics.Ascent + f.metrics.Descent, nil
 }
 
 // CopyEngineFace supplies an independently configurable engine face for host-only
@@ -286,12 +239,6 @@ func (f *Font) CopyEngineFace() *etext.GoTextFace {
 	}
 	face := new(etext.GoTextFace)
 	face.Source, face.Size, face.Language = f.source.ttf, f.options.Size, f.options.Language
-	for _, v := range f.options.Features {
-		face.SetFeature(etext.MustParseTag(v.Tag), v.Value)
-	}
-	for _, v := range f.options.Variations {
-		face.SetVariation(etext.MustParseTag(v.Tag), v.Value)
-	}
 
 	return face
 }

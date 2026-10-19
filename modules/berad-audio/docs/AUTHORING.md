@@ -49,8 +49,9 @@ does not reinterpret routing as scheduling policy.
 becomes absolute at load time. It retains encoded bytes and analysis buckets,
 not the entire decoded stream. Each decoder gets its own encoded copy. This input
 cap is not a total heap limit. Path/duration/fingerprint are scalar observations;
-`Peaks()` returns a detached slice and `PeakBetween` reads source-time buckets.
-Changing a returned view cannot change verification, audition bytes or suggestions.
+`PeakBetween` reads source-time buckets without exposing the peak storage.
+Returned region suggestions are detached; changing them cannot change verification,
+audition bytes or later suggestions.
 
 Analysis uses 44.1 kHz stereo signed 16-bit PCM and 10 ms peak/energy buckets.
 Peaks preserve either channel's transients; region boundary energy is weighted and

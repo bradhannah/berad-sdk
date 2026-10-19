@@ -51,6 +51,7 @@ func TestMusicStartsMutedAndComposesLiveCategoryContext(t *testing.T) {
 	if !music.IsPlaying() || len(host.players) != 1 || host.players[0].gain != 0 {
 		t.Fatal("zero envelope dropped finite music")
 	}
+	position := music.Pause()
 	if err := music.SetGain(0.5); err != nil {
 		t.Fatal(err)
 	}
@@ -59,6 +60,15 @@ func TestMusicStartsMutedAndComposesLiveCategoryContext(t *testing.T) {
 	}
 	if host.players[0].gain != 0.125 || len(host.players) != 1 {
 		t.Fatal(music.Snapshot())
+	}
+	if music.IsPlaying() || music.Snapshot().Voice.State != audio.VoicePaused {
+		t.Fatal("gain change resumed paused music")
+	}
+	if err := music.Resume("score", position); err != nil {
+		t.Fatal(err)
+	}
+	if !music.IsPlaying() || len(host.players) != 1 || host.players[0].gain != 0.125 {
+		t.Fatal("resume lost the retained mix", music.Snapshot())
 	}
 }
 

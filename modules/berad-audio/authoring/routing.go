@@ -172,11 +172,6 @@ func (e *LibraryEditor) SetRouting(routing Routing) error {
 	return e.replace(next)
 }
 
-// RoutingChanged compares routing with the last saved baseline.
-func (e *LibraryEditor) RoutingChanged() bool {
-	return !bytes.Equal(encodeAudioValue(e.library.Routing), encodeAudioValue(e.baseline.Routing))
-}
-
 // ResolveAssignment reports the effective cue and whether the target has an explicit entry.
 func (e *LibraryEditor) ResolveAssignment(group, target string) (string, bool) {
 	assignments := e.library.Routing.Groups[group]

@@ -20,7 +20,7 @@ func (operation Operation) execute(source *Image, output []byte, bounds image.Re
 			}
 		}
 	case operationScroll, operationWave, operationRise, operationReplace,
-		operationTint, operationGain, operationOpacity, operationAlphaScale:
+		operationGain, operationAlphaScale:
 		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 			for x := bounds.Min.X; x < bounds.Max.X; x++ {
 				if operation.selected(source, x, y) {
@@ -46,15 +46,11 @@ func (operation Operation) pixel(source *Image, output []byte, bounds image.Rect
 			sampleX, sampleY := operation.sample(bounds, column, row)
 			copy(output[index:index+channels], source.pixels[(sampleY*source.width+sampleX)*channels:][:channels])
 		}
-	case operationOpacity:
-		for channel := range channels {
-			output[index+channel] = byte(float64(source.pixels[index+channel]) * operation.factor)
-		}
 	case operationAlphaScale:
 		output[index+alphaChannel] = byte(float64(source.pixels[index+alphaChannel]) * operation.factor)
-	case operationGain, operationTint:
-		if source.pixels[index+alphaChannel] != 0 {
-			operation.colour(source.pixels[index:index+channels], output[index:index+channels])
+	case operationGain:
+		for channel := range alphaChannel {
+			output[index+channel] = byte(min(float64(channelMaximum), float64(source.pixels[index+channel])*operation.factor))
 		}
 	case operationInvalid, operationOutline, operationContour, operationCheckerOutline:
 		panic("non-pixel graphics operation")
@@ -81,17 +77,6 @@ func (operation Operation) sample(bounds image.Rectangle, column, row int) (int,
 	}
 
 	return max(bounds.Min.X, min(bounds.Max.X-1, column)), max(bounds.Min.Y, min(bounds.Max.Y-1, row))
-}
-
-func (operation Operation) colour(input, output []byte) {
-	factors := [3]float64{operation.factor, operation.factor, operation.factor}
-	if operation.kind == operationTint {
-		factors = [3]float64{float64(operation.first.R) / channelMaximum,
-			float64(operation.first.G) / channelMaximum, float64(operation.first.B) / channelMaximum}
-	}
-	for channel, factor := range factors {
-		output[channel] = byte(min(float64(channelMaximum), float64(input[channel])*factor))
-	}
 }
 
 func (source *Image) alpha(x, y int) byte {

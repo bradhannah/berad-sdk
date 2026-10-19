@@ -15,8 +15,6 @@ var (
 	ErrInvalidRequest = errors.New("invalid audio request")
 	// ErrClosed rejects new work after terminal runtime closure.
 	ErrClosed = errors.New("audio runtime is closed")
-	// ErrVoiceClosed rejects control operations on a retired or zero voice.
-	ErrVoiceClosed = errors.New("audio voice is closed")
 	// ErrOwnerClosed rejects playback through a released owner.
 	ErrOwnerClosed = errors.New("audio owner is closed")
 	// ErrVoiceLimit reports that a loop cannot displace protected loops.

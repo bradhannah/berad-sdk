@@ -28,60 +28,64 @@ func apply(t *testing.T, source *graphics.Image, operations ...graphics.Operatio
 	return result
 }
 
-func TestSnapshotRegionStrideAndFramePadding(t *testing.T) {
-	atlas := image.NewRGBA(image.Rect(10, 20, 60, 50))
-	atlas.SetRGBA(14, 23, color.RGBA{R: 80, A: 128})
-	region := atlas.SubImage(image.Rect(14, 23, 32, 32))
-	source, err := graphics.NewImage(region)
-	if err != nil {
-		t.Fatal(err)
-	}
-	atlas.SetRGBA(14, 23, color.RGBA{})
+func TestPixelsSnapshotAndDetachedCopies(t *testing.T) {
+	pixels := []byte{80, 40, 20, 128, 90, 60, 30, 0}
+	source := imageOf(t, 2, 1, pixels)
+	clear(pixels)
 	copy := source.CopyRGBA()
-	if copy.Bounds() != image.Rect(0, 0, 18, 9) || copy.RGBAAt(0, 0) != (color.RGBA{R: 80, A: 128}) {
+	if copy.Bounds() != image.Rect(0, 0, 2, 1) || copy.Stride != 8 ||
+		copy.RGBAAt(0, 0) != (color.RGBA{R: 80, G: 40, B: 20, A: 128}) {
 		t.Fatal("snapshot/origin lost")
 	}
-	copy.SetRGBA(0, 0, color.RGBA{})
-	if source.Pixels()[0] != 80 {
-		t.Fatal("returned image aliases source")
-	}
-	frame, err := graphics.NewFrame(source, image.Pt(41, 23), image.Pt(3, 5), image.Pt(20, 22))
-	if err != nil {
-		t.Fatal(err)
-	}
-	padded, err := frame.Pad(graphics.Insets{Left: 2, Top: 3, Right: 1, Bottom: 4})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if padded.Offset() != image.Pt(1, 2) || padded.Anchor() != frame.Anchor() || padded.Image().Bounds() != image.Rect(0, 0, 21, 16) {
-		t.Fatal("padding changed logical placement")
-	}
-	if padded.Image().CopyRGBA().RGBAAt(2, 3).R != 80 {
-		t.Fatal("padded content moved incorrectly")
-	}
-	cropped, err := padded.Image().Crop(image.Rect(2, 3, 20, 12))
-	if err != nil || !bytes.Equal(cropped.Pixels(), source.Pixels()) {
-		t.Fatal("crop does not restore original", err)
+	clear(copy.Pix)
+	clear(source.Pixels())
+	if !bytes.Equal(source.Pixels(), []byte{80, 40, 20, 128, 90, 60, 30, 0}) || source.Bytes() != 8 {
+		t.Fatal("returned storage aliases source or payload accounting changed")
 	}
 }
 
 func TestChannelOperationsPreserveDeclaredAppearanceAndOrdering(t *testing.T) {
 	source := imageOf(t, 1, 1, []byte{80, 40, 20, 128})
-	ordinary := apply(t, source, graphics.Opacity(.5)).Pixels()
 	independent := apply(t, source, graphics.AlphaChannelScale(.5, graphics.Selection{})).Pixels()
-	if !bytes.Equal(ordinary, []byte{40, 20, 10, 64}) || !bytes.Equal(independent, []byte{80, 40, 20, 64}) {
-		t.Fatalf("opacity and alpha-only must differ: %v %v", ordinary, independent)
+	if !bytes.Equal(independent, []byte{80, 40, 20, 64}) {
+		t.Fatalf("alpha-only scaling must preserve RGB: %v", independent)
 	}
 	if !bytes.Equal(apply(t, source, graphics.RGBGain(0, graphics.Selection{})).Pixels(), []byte{0, 0, 0, 128}) {
 		t.Fatal("zero gain is not black")
 	}
-	first := apply(t, source, graphics.RGBGain(4, graphics.Selection{}), graphics.TintRGB(128, 255, 255))
-	second := apply(t, source, graphics.TintRGB(128, 255, 255), graphics.RGBGain(4, graphics.Selection{}))
-	if bytes.Equal(first.Pixels(), second.Pixels()) {
-		t.Fatal("ordered clipping/composition lost")
+	first := apply(t, source, graphics.RGBGain(4, graphics.Selection{}), graphics.RGBGain(.5, graphics.Selection{}))
+	second := apply(t, source, graphics.RGBGain(.5, graphics.Selection{}), graphics.RGBGain(4, graphics.Selection{}))
+	if !bytes.Equal(first.Pixels(), []byte{127, 80, 40, 128}) ||
+		!bytes.Equal(second.Pixels(), []byte{160, 80, 40, 128}) {
+		t.Fatal("ordered saturation changed", first.Pixels(), second.Pixels())
 	}
 	if !bytes.Equal(source.Pixels(), []byte{80, 40, 20, 128}) {
 		t.Fatal("source mutated")
+	}
+}
+
+func TestRGBGainIncludesAlphaZeroEmission(t *testing.T) {
+	source := imageOf(t, 2, 1, []byte{80, 40, 20, 0, 80, 40, 20, 128})
+	for _, sample := range []struct {
+		gain float64
+		want []byte
+	}{
+		{0, []byte{0, 0, 0, 0, 0, 0, 0, 128}},
+		{2, []byte{160, 80, 40, 0, 160, 80, 40, 128}},
+		{4, []byte{255, 160, 80, 0, 255, 160, 80, 128}},
+	} {
+		got := apply(t, source, graphics.RGBGain(sample.gain, graphics.Selection{})).Pixels()
+		if !bytes.Equal(got, sample.want) {
+			t.Fatalf("gain %v: %v != %v", sample.gain, got, sample.want)
+		}
+	}
+	got := apply(t, source, graphics.AlphaChannelScale(0, graphics.Selection{}),
+		graphics.RGBGain(0, graphics.Selection{})).Pixels()
+	if !bytes.Equal(got, make([]byte, 8)) {
+		t.Fatalf("zero gain after alpha removal retained emission: %v", got)
+	}
+	if !bytes.Equal(source.Pixels(), []byte{80, 40, 20, 0, 80, 40, 20, 128}) {
+		t.Fatal("gain mutated source")
 	}
 }
 
@@ -181,12 +185,9 @@ func TestInvalidInputsRejectBeforeAllocationAndDoNotReturnSuccessFallback(t *tes
 		t.Fatal("overflow dimensions accepted")
 	}
 	source := imageOf(t, 1, 1, []byte{0, 0, 0, 255})
-	for _, operation := range []graphics.Operation{{}, graphics.RGBGain(math.NaN(), graphics.Selection{}), graphics.Opacity(2), graphics.Replace(nil, graphics.Selection{})} {
+	for _, operation := range []graphics.Operation{{}, graphics.RGBGain(math.NaN(), graphics.Selection{}), graphics.AlphaChannelScale(2, graphics.Selection{}), graphics.Replace(nil, graphics.Selection{})} {
 		if result, err := source.Apply(operation); err == nil || result != nil {
 			t.Fatal("invalid request returned success-shaped fallback")
 		}
-	}
-	if _, err := source.Pad(graphics.Insets{Left: math.MaxInt}); err == nil {
-		t.Fatal("padding overflow accepted")
 	}
 }

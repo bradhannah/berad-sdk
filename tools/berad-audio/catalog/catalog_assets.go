@@ -33,8 +33,8 @@ func formatName(filename string) string {
 	}
 }
 
-// InspectAsset inspects one bounded encoded file without opening a device.
-func InspectAsset(id, path string, files fs.FS, options Options) (CatalogAsset, error) {
+// inspectAsset inspects one bounded encoded file without opening a device.
+func inspectAsset(id, path string, files fs.FS, options Options) (CatalogAsset, error) {
 	var asset CatalogAsset
 	asset.ID, asset.Path, asset.Availability = id, options.PathPrefix+path, CatalogPresent
 	asset.Format = formatName(path)

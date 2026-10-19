@@ -1,5 +1,5 @@
 // Package text provides immutable font resources, styled layout and local text
-// geometry, bounded retained output, and Ebitengine rendering. Hosts own input,
+// geometry and bounded Ebitengine rendering. Hosts own retained output, input,
 // focus, scene ordering, destinations, and application text semantics.
 //
 // Font and content values are immutable. Layout queries do not service input or

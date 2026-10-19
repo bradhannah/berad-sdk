@@ -1,7 +1,7 @@
 # Berad Text
 
-Experimental Ebitengine-first text resources, styled layout, local geometry,
-retained panels/logs and bounded rendering. Canonical module:
+Experimental Ebitengine-first text resources, styled layout, source-range/caret
+geometry and bounded rendering. Canonical module:
 `github.com/bradhannah/berad-sdk/modules/berad-text` (root package `text`).
 Pin a reviewed available development revision; there is no stable version promise.
 Minimum Go is 1.27.0; the tested toolchain is 1.27.1 with Ebitengine 2.10.4.
@@ -16,12 +16,10 @@ The [standalone example](examples/panel/main.go) is a complete Ebitengine host w
 supplied Go Regular font data. The [independent consumer](testdata/consumer/consumer_test.go)
 also supplies a synthetic bitmap icon, changes paint, wraps content and exercises
 geometry and ownership using only the public API. Both compile in the registered
-checks. From the SDK checkout, use `make text-demo` for the interactive demonstration:
-click the icon or input field, Enter to submit, Escape to leave editing, Space to
-toggle a blocking panel, T to change paint and +/- to change size. Resize to reflow.
-All input/stacking/editing is example-host code; the library only returns geometry.
-This small example uses rune-wise deletion and committed input characters, not a
-complete IME, grapheme editor or widget framework.
+checks. From the SDK checkout, use `make text-demo` for the demonstration:
+T changes paint and +/- changes font size. Resize to reflow the styled text.
+The example retains its own layout and handles its own keyboard controls; the
+library provides no input handlers, editor, panel or log abstraction.
 
 Repeatable SDK Make targets:
 
@@ -45,17 +43,38 @@ Construction order is `ParseFont` / `NewBitmapSource`, `Source.NewFont`,
 and close the renderer when its owner retires. Fonts and layouts are immutable
 Go-owned values; they may be shared independently of renderer lifetime.
 
-The caller owns content meaning, input, focus, Z/paint-order routing, viewport and
-scroll state, persistence, and destination images. The SDK provides geometric
-candidates, never click callbacks or editing commands.
+The caller owns content meaning, input, focus, Z/paint-order routing, retained
+panels/history, viewport and scroll state, persistence, and destination images.
+The SDK provides source-range rectangles and offset-to-caret positions, never
+click callbacks or editing commands.
 
 See [API contracts](docs/API.md) for defaults, units, ownership, exposure and limits.
 There is no dependency on other Berad runtimes or an application widget toolkit.
 
+## Experimental API cleanup
+
+This revision intentionally breaks the earlier experimental surface to match
+current production use. It removes `Panel`/`Log`, OpenType feature/variation
+configuration, bitmap RGB-preservation mode, annotation tags/hits, nearest-point
+caret lookup, layout alignment and explicit line spacing, the public ink-bounds
+getter, and draw-time destination clip/cache-bypass switches. Hosts retain their
+own content/history, place layouts
+with `GeoM`, and pass destination subimages when clipping is needed.
+`Width`, `TopAlign`, `RangeRects`, `CaretAt`, local clipping and renderer limits
+remain. `CopyEngineFace` remains a compatibility bridge, not the SDK rendering
+identity. See the [migration details](docs/API.md#experimental-surface-migration).
+Font.Measure now takes only the source text, preserving the production caller's
+former zero-spacing measurement behavior. Bitmap glyphs always receive palette
+tint and alpha.
+
 ## Validation and compatibility
 
 Text's registered unit/race/consumer lanes execute an Ebitengine test harness and
-require a desktop render backend. These checks establish automated rendering,
+require a desktop render backend. Contract fixtures include independently authored
+bitmap baseline/top-alignment pixels, exact line/range/caret coordinates, overflow
+rejection, LRU promotion under entry/byte pressure, and transparent/repaint pixels.
+The unrelated consumer is public-API compatibility smoke coverage; it is not a
+production-demand example or a complete geometry/pixel oracle. These checks establish automated rendering,
 not physical input/IME or all-platform acceptance. The independent consumer uses
 synthetic images and the BSD-licensed Go font fixture from `golang.org/x/image`;
 production code embeds no font or game media.

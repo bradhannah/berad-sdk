@@ -53,16 +53,13 @@ func DefaultRendererOptions() RendererOptions {
 		MaxRenderBytes: defaultRenderBytes, MaxDimension: defaultDimension}
 }
 
-// DrawOptions exposes deliberate Ebitengine placement/filtering. Clip is in
-// destination coordinates; it is intersected with the target's existing bounds.
-// Uncached is useful for one-shot content and fresh/cached acceptance comparisons.
+// DrawOptions exposes Ebitengine placement/filtering. Pass a destination subimage
+// for destination-coordinate clipping.
 type DrawOptions struct {
 	GeoM   ebiten.GeoM
 	Filter ebiten.Filter
-	Clip   *image.Rectangle
 	// LocalClip clips layout pixels before placement without changing geometry.
 	LocalClip *image.Rectangle
-	Uncached  bool
 }
 
 // CacheStats is detached lifetime accounting, not total heap or GPU memory.
@@ -116,19 +113,12 @@ func (r *Renderer) Draw(target *ebiten.Image, layout *Layout, palette Palette, o
 	if !validTransform(options.GeoM) {
 		return errTransform
 	}
-	entry, temporary, err := r.preparedRaster(layout, palette, options.Uncached)
+	entry, temporary, err := r.preparedRaster(layout, palette)
 	if err != nil {
 		return err
 	}
 	if temporary {
 		defer entry.image.Deallocate()
-	}
-	if options.Clip != nil {
-		clip := target.Bounds().Intersect(*options.Clip)
-		if clip.Empty() {
-			return nil
-		}
-		target = subImage(target, clip)
 	}
 	source, origin := entry.image, entry.origin
 	if options.LocalClip != nil {
@@ -168,12 +158,12 @@ func subImage(source *ebiten.Image, region image.Rectangle) *ebiten.Image {
 	return result
 }
 
-func (r *Renderer) preparedRaster(layout *Layout, palette Palette, uncached bool) (*rasterEntry, bool, error) {
+func (r *Renderer) preparedRaster(layout *Layout, palette Palette) (*rasterEntry, bool, error) {
 	key, err := paintKey(layout, palette)
 	if err != nil {
 		return nil, false, err
 	}
-	if entry := r.cache[key]; entry != nil && !uncached {
+	if entry := r.cache[key]; entry != nil {
 		r.stats.Hits++
 		r.lru.MoveToFront(entry.element)
 
@@ -184,7 +174,7 @@ func (r *Renderer) preparedRaster(layout *Layout, palette Palette, uncached bool
 	if err != nil {
 		return nil, false, err
 	}
-	if uncached || entry.bytes > r.options.MaxCacheBytes {
+	if entry.bytes > r.options.MaxCacheBytes {
 		r.stats.Bypasses++
 
 		return entry, true, nil
@@ -271,7 +261,6 @@ func drawGlyph(
 ) {
 	options := new(ebiten.DrawImageOptions)
 	var source *ebiten.Image
-	var colored bool
 	if glyph.isBitmap {
 		if glyph.bitmap.Region.Empty() {
 			return
@@ -285,7 +274,6 @@ func drawGlyph(
 		options.GeoM.Scale(glyph.scale, glyph.scale)
 		options.GeoM.Translate(glyph.x-origin.X, glyph.y-origin.Y)
 		options.Filter = ebiten.FilterNearest
-		colored = glyph.bitmap.Colored
 	} else {
 		source = glyph.glyph.Image()
 		if source == nil {
@@ -293,12 +281,13 @@ func drawGlyph(
 		}
 		options.GeoM.Translate(glyph.x+float64(glyph.glyph.ImageBounds.Min.X)-origin.X,
 			glyph.y+float64(glyph.glyph.ImageBounds.Min.Y)-origin.Y)
-		colored = glyph.glyph.Colored()
 	}
-	if colored {
-		options.ColorScale.ScaleAlpha(float32(paint.A) / math.MaxUint16)
-	} else {
+	// Bitmap pixels always receive tint. Only intrinsic engine colour-font glyphs
+	// preserve source RGB, following the engine's rendering semantics.
+	if glyph.isBitmap || !glyph.glyph.Colored() {
 		options.ColorScale.ScaleWithColor(paint)
+	} else {
+		options.ColorScale.ScaleAlpha(float32(paint.A) / math.MaxUint16)
 	}
 	target.DrawImage(source, options)
 }

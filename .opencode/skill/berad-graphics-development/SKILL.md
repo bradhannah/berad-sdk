@@ -1,6 +1,6 @@
 ---
 name: berad-graphics-development
-description: Use when implementing, using, reviewing, or validating Berad Graphics images, frames, colour operations, procedural kernels, masks, dissolve, animation, or Ebitengine resource ownership.
+description: Use when implementing, using, reviewing, or validating Berad Graphics image/channel operations, procedural kernels, masks, dissolve, cycle sampling, or Ebitengine resource ownership.
 ---
 
 # Berad Graphics development
@@ -17,8 +17,12 @@ input and scene/workflow policy with the consumer. No automatic file watching.
 Preserve alpha conventions: ordinary opacity scales premultiplied channels;
 independent alpha scaling and additive alpha pulse intentionally preserve RGB.
 Changing those visual semantics requires consumer review, not just renaming.
-Selections restrict destination writes, not source samples. Padding compensates
-frame offsets; do not infer padding or atlas geometry from familiar dimensions.
+Selections restrict destination writes, not source samples. RGB gain includes
+alpha-zero emissive RGB. Hosts own frame arrays and placement; `CycleIndex` samples
+explicit ticks. Use native `CopyRegion` with explicit `Insets` for owned padding;
+do not infer padding or atlas geometry from familiar dimensions. See the API's
+v0 removal notes before migrating older examples: HSV, Frame/Animation, CPU
+tint/opacity/crop/pad and the redundant import/dissolve conveniences were retired.
 
 Processors are host-serialized. Imported GPU images are borrowed immutable inputs;
 explicit mutation requires invalidation. Cache eviction drops retained borrows,
