@@ -11,7 +11,8 @@ in another repository. Read [AGENTS.md](../AGENTS.md),
 Use the [extraction plan template](templates/extraction-plan.md) in the approved
 issue/PR. Record source revision, reviewed SDK-guidance commit, concrete consumers,
 approved requirements, and active parallel work. Inventory implementation, callers,
-tests, assets, tools, persisted formats, and maintained docs before choosing cuts.
+tests, assets, tools, persisted formats, maintained docs, skills, contributor
+instructions, Help and command guides before choosing cuts.
 Repository placement and the issue's identity are separate decisions.
 
 Preserve existing approved decisions. Identify differences against these rules and
@@ -51,7 +52,7 @@ the contract. A new ownership/failure boundary does need appropriate evidence.
 
 ## 4. Register validation before onboarding code here
 
-This repository currently has a foundation-only gate. Adding a `go.mod` or Go
+This repository registers module lanes explicitly. Adding a `go.mod` or Go
 implementation requires extending `sdk.json` and its validator together with an
 explicit check graph, dependencies, tools, and consumer fixtures. The initial gate
 deliberately rejects unsupported code rather than reporting a false full pass.
@@ -79,6 +80,23 @@ Complete the [module README](templates/module-readme.md), API contracts, example
 applicable consumer docs, license notices, and catalogs. Explain selected/reused
 validation and any unsupported acceptance. Review the final full diff against the
 checkpoint, including later fixes and companion repositories.
+
+Transfer reusable system knowledge with its implementation. Split mixed documents
+and skills: SDK owns mechanism/API/tool guidance; consumers retain integration,
+policy, media and adoption rationale; private orchestration and evidence remain
+with their owners. Preserve unique failure/lifecycle/compatibility rules before
+removing source-side duplicates. Update inbound links, catalogs, skill triggers
+and current source maps. Historical ADR context is not a competing live manual.
+
+Map old tests to SDK mechanism coverage, consumer adapter/policy coverage, or a
+specifically justified temporary oracle. Move/port missing assertions, then retire
+the old implementation and its last tests together. Test-only copies are not an
+indefinite second implementation. Do not delete assets/notices as code cleanup.
+
+Verify representative tasks from skill to contract to public API in an SDK-only
+session and an independent consumer. Coordinated launchers load SDK skills from
+this checkout rather than copying them. Restart loaded sessions after skill/config
+changes and verify actual discovery. Link checks do not prove semantic coverage.
 
 Completion means an independently usable module and the agreed consumer cutover,
 not merely a new directory. A local checkpoint is not a published revision or a

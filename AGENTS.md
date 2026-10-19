@@ -7,9 +7,11 @@ are canonical, so the skill is not a second copy of the rules.
 
 ## Boundaries
 
-- The repository contains independently versioned modules under `modules/berad-*`.
-  `sdk.json` is the active-module inventory. The initial empty inventory means
-  foundation-only validation; register the checks before introducing module code.
+- The repository contains independently versioned runtimes under `modules/berad-*`
+  and developer tools under `tools/berad-*`. Tools may consume runtimes; runtimes
+  must not depend on tools/TUI. Keep executable packages beneath each tool's `cmd/`.
+  `sdk.json` is the active-module inventory. Register checks before introducing
+  module code; the original empty inventory supported foundation-only validation.
 - Expose only required consumer capabilities. Prefer concrete service types with
   private state and small caller-supplied interfaces. Review every public package
   and third-party type against [API design](docs/API_DESIGN.md).
@@ -40,9 +42,9 @@ are canonical, so the skill is not a second copy of the rules.
 - Commit, push, publish, or alter remote state only with authorization. Do not
   commit to `main`, bypass validation, or merge PRs on the maintainer's behalf.
 
-## Foundation checks
+## Registered checks
 
 Use `python3 -I -B scripts/check.py plan` to explain work, then `validate` or
-`quality-gate`. Both final targets currently cover the same foundation inventory;
-the second invocation reuses eligible regression evidence. These checks do not
-establish runtime-module, native-platform, API, or consumer acceptance.
+`quality-gate`. Both final targets cover the checker and registered module lanes;
+unchanged invocations reuse eligible evidence. Native-platform and semantic API
+acceptance require their own scoped observations. See `docs/VALIDATION.md`.

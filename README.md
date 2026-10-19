@@ -9,11 +9,17 @@ assets retain their own terms; see [licensing](docs/LICENSING.md).
 
 ## Current availability
 
-This repository is at the **foundation stage**: engineering contracts, conversion
-guidance, templates, an OpenCode skill, and lightweight validation are available.
-There are **no installable runtime modules or SDK version releases here yet**.
-Audio, text, and graphics are planned module identities, not available packages.
+Engineering contracts, conversion guidance, templates and an OpenCode skill are
+available. **Berad Audio** provides experimental runtime/authoring and separately
+versioned terminal-editor/catalog/probe tools, with explicit module/consumer checks
+on the `feat/berad-audio` development branch. Consumers
+must pin a remotely available reviewed revision; there are no stable SDK version
+releases. Text and graphics remain planned identities.
+Standalone version-qualified tools installation awaits reviewed default-branch
+availability or a separately authorized module tag; pinned Redux game/editor
+installation is verified independently. Neither is native listening acceptance.
 See the [module catalog](modules/README.md).
+The [tool catalog](tools/README.md) describes the separately versioned tools layout.
 
 ## Converting an existing subsystem?
 
@@ -29,6 +35,8 @@ not silently change an active conversion's approved scope.
 
 OpenCode users can load the public
 [`berad-sdk-development` skill](.opencode/skill/berad-sdk-development/SKILL.md).
+Audio work also uses the SDK-owned
+[`berad-audio-development` skill](.opencode/skill/berad-audio-development/SKILL.md).
 Other agents and human contributors can follow the same linked documents directly.
 No private checkout, service, or original game installation is required.
 
@@ -41,9 +49,10 @@ No private checkout, service, or original game installation is required.
 - Validate affected work and reuse valid results instead of rerunning everything.
 - Coordinate consumer upgrades; keep long-term version freezes an explicit last resort.
 
-## Validate this foundation
+## Validate registered work
 
-Requires Python 3.10 or newer. Make is a convenience, not a requirement:
+Requires Python 3.10 or newer; runtime lanes also require their declared Go
+toolchain and provisioned dependencies. Make is a convenience:
 
 ```sh
 python3 -I -B scripts/check.py plan
@@ -51,9 +60,16 @@ python3 -I -B scripts/check.py validate
 ```
 
 Equivalent Make targets are `make plan`, `make validate`, and `make quality-gate`.
-Checks are local and offline. Foundation regression tests reuse a successful local
-result when their inputs match; documentation checks remain inexpensive and run
+Checks are local and offline. Checker and registered module lanes reuse successful
+results when their inputs match; documentation checks remain inexpensive and run
 every time. See [validation](docs/VALIDATION.md) for exact coverage and limitations.
+
+Use `make plan MODULE=modules/berad-audio` for focused selection. `make provision`
+is explicit network-enabled setup, separate from offline validation. `make clean`
+removes only known generated tool binaries under `tools/berad-audio/bin` (and old
+`.cache/bin` outputs); it keeps validation
+results and authored projects. `MODULE=tools/berad-audio` selects the registered
+audio-tool lanes; empty/planned module directories do not establish acceptance.
 
 Read the [documentation catalog](docs/README.md) and
 [contribution policy](CONTRIBUTING.md) for the remaining contracts.

@@ -25,6 +25,11 @@ Every retained Markdown document beneath `docs/` is cataloged exactly once:
 
 ## Requirement language
 
+System documentation is maintained with its implementation:
+[audio runtime/authoring catalog](../modules/berad-audio/docs/README.md) and
+[audio tools catalog](../tools/berad-audio/docs/README.md). The SDK-owned public
+skills route to these contracts; consumer integration guides own application policy.
+
 **MUST** is required. **SHOULD** is the default unless a reviewed reason justifies
 an exception. **MAY** is optional. Stable `SDK-*` identifiers refer to the specific
 rules below, not game mechanics. Keep an ID's meaning stable; introduce a new ID

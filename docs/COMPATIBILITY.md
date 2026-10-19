@@ -58,3 +58,21 @@ Separate minimum supported Go/engine versions from tested toolchain versions.
 Dependency upgrades invalidate applicable downstream validation and need consumer
 review. Go API versions, asset/persistence schemas, engine compatibility, and
 import-path migration are separate contracts.
+
+## Tool modules
+
+Developer tools use independent modules at `tools/berad-<domain>` and tags such as
+`tools/berad-audio/v0.1.0`. A tools version pins an already available runtime/authoring
+version. Publish runtime capabilities first, then tools that require them, then
+update consuming games. Do not introduce unavailable future requirements.
+
+Runtime and tools module archives do not include each other or repository-root
+scripts/assets. Include their own notices and required resources. Version-qualified
+tool installation must work outside the SDK checkout without replacements, a
+workspace, private data or another command installed implicitly. Cross-module
+documentation references should use stable public URLs when needed from an archive.
+
+Tools' published-pin checks and candidate-runtime integration are separate evidence:
+candidate integration uses only explicitly registered temporary substitutions and
+does not establish distribution. Games must check the actual selected runtime and
+tools versions together, since tools' requirements participate in Go module selection.
