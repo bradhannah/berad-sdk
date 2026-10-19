@@ -285,6 +285,9 @@ def provision(root, modules, selectors=()):
         source = root / module["id"]
         print(f"provision: {module['id']} (network-enabled, no validation proof)", flush=True)
         run(["go", "mod", "download"], source, env)
+        # Lazy module download can add only go.mod sums. Resolve actual production
+        # and test imports here so subsequent readonly/offline lanes have zip sums.
+        run(["go", "list", "-mod=mod", "-deps", "-test", "./..."], source, env)
         with tempfile.TemporaryDirectory(prefix="berad-provision-") as temporary:
             copy_module(root, module, Path(temporary) / "library")
             prepare_consumer(source, Path(temporary) / "consumer", module, env)

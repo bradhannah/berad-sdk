@@ -106,6 +106,8 @@ missing package completions remain errors.
 
 `make provision` (or the checker's explicit `provision` operation) enables ordinary
 network dependency provisioning for selected modules and their isolated consumers.
+It resolves production and test import closures so lazy module downloads cannot
+leave source-archive checksums absent from the next readonly/offline run.
 It uses the same consumer layout and creates no validation proof. Normal validation
 never provisions dependencies. Tool builds write to their own module-root `bin/`.
 Git, source inventory, lane fingerprints and isolated copies exclude only that
