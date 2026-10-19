@@ -24,6 +24,18 @@ the checker contracts and registered module lanes:
 | module race | Separate race-instrumented module tests; does not repeat vet/build |
 | module consumer | Copied public-API consumer using only a validated temporary module substitution; ordinary and race tests |
 
+Contract checks enumerate public skills (valid identities/descriptions, no duplicate
+names) and check their local document links. Documentation catalogs cover root and
+registered module/tool `docs/` trees, each under its owner. New system skills and
+module manuals must participate without copying private orchestration. These checks
+do not prove semantic migration coverage or actual discovery in an already running
+assistant; review ownership and verify fresh-session discovery separately.
+Plain OpenCode startup may generate `.opencode/node_modules`, `package.json`,
+`package-lock.json`, `bun.lock` and a local `.gitignore`. These exact bootstrap
+outputs are ignored and excluded from source inventory; public skills, plugin
+source, configuration and similarly named directories elsewhere remain checked.
+The SDK's offline checks do not require those OpenCode dependencies.
+
 `plan` reports intended work and does not execute tests or create cache files.
 Each final run reports executed/reused checks and elapsed time. Documentation edits
 do not invalidate checker regression evidence. Checker/test/configuration changes do.

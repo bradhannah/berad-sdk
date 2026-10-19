@@ -35,6 +35,8 @@ not silently change an active conversion's approved scope.
 
 OpenCode users can load the public
 [`berad-sdk-development` skill](.opencode/skill/berad-sdk-development/SKILL.md).
+Audio work also uses the SDK-owned
+[`berad-audio-development` skill](.opencode/skill/berad-audio-development/SKILL.md).
 Other agents and human contributors can follow the same linked documents directly.
 No private checkout, service, or original game installation is required.
 
@@ -66,8 +68,8 @@ Use `make plan MODULE=modules/berad-audio` for focused selection. `make provisio
 is explicit network-enabled setup, separate from offline validation. `make clean`
 removes only known generated tool binaries under `tools/berad-audio/bin` (and old
 `.cache/bin` outputs); it keeps validation
-results and authored projects. Tool module selection becomes available when its
-implementation is registered, rather than treating an empty directory as acceptance.
+results and authored projects. `MODULE=tools/berad-audio` selects the registered
+audio-tool lanes; empty/planned module directories do not establish acceptance.
 
 Read the [documentation catalog](docs/README.md) and
 [contribution policy](CONTRIBUTING.md) for the remaining contracts.

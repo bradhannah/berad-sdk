@@ -13,6 +13,11 @@ Identify semantic mapping, assets/settings, persistence, timing/input, and other
 consumer-owned policy. Describe creation, scene replacement, error recovery, and
 normal/error shutdown ownership. Link the SDK contract rather than copying it.
 
+Identify consumer-owned integration docs/skills and link upstream reusable guidance.
+Confirm updated inbound references and retire superseded mechanism manuals/test
+engines after preserving required coverage. Verify the public guidance works
+without a private orchestration checkout.
+
 ## Cutover sequence
 
 Record independent SDK proof, staged bridge proof if needed, authorized dependency

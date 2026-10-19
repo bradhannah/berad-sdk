@@ -6,6 +6,7 @@
 // this package. The backend/ebitengine package supplies the supported game adapter.
 //
 // The initial API is experimental. Definition is an in-memory playback contract,
-// not a new persisted authoring format. The existing Redux TUI/manifest remain
-// unchanged while the independent module is staged for consumer integration.
+// not a persisted authoring format. Package authoring owns schema-3 documents,
+// source analysis and publication; the separately versioned tools module owns
+// terminal UI and native probes. Consumers supply policy and media.
 package audio

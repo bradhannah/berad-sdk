@@ -32,17 +32,30 @@ LINK = re.compile(r"\[[^\]\n]*\]\(([^)\n]+)\)")
 FENCE = re.compile(r"^```[^\n]*\n.*?^```\s*$", re.MULTILINE | re.DOTALL)
 
 
+def opencode_output(relative):
+    """OpenCode bootstraps these local dependencies when discovering public skills."""
+    parts = relative.parts
+    return (len(parts) >= 2 and parts[:2] == (".opencode", "node_modules") or
+            relative.as_posix() in {".opencode/package.json", ".opencode/package-lock.json",
+                                    ".opencode/bun.lock", ".opencode/.gitignore"})
+
+
 def files(root):
     result = []
     for current, directories, names in os.walk(root):
         directories[:] = sorted(name for name in directories if name not in IGNORED and
+                                not opencode_output((Path(current) / name).relative_to(root)) and
                                 not MODULE_CHECKS.INVENTORY.tool_output((Path(current) / name).relative_to(root)))
         for name in directories + names:
             path = Path(current) / name
+            if opencode_output(path.relative_to(root)):
+                continue
             if path.is_symlink():
                 raise ValueError(f"source symlink must be an explicit reviewed input: {path}")
         for name in sorted(names):
             path = Path(current) / name
+            if opencode_output(path.relative_to(root)):
+                continue
             if not path.is_file():
                 raise ValueError(f"unsupported source input: {path}")
             result.append(path)
@@ -68,15 +81,28 @@ def contracts(root):
             target = (path.parent / unquote(parsed.path)).resolve()
             if not target.is_relative_to(root.resolve()) or not target.exists():
                 raise ValueError(f"broken or external local link: {path.relative_to(root)} -> {destination}")
-    catalog = (root / "docs/README.md").read_text()
-    destinations = [urlsplit(link).path for link in LINK.findall(catalog)]
-    for path in (root / "docs").rglob("*.md"):
-        relative = path.relative_to(root / "docs").as_posix()
-        if destinations.count(relative) != 1:
-            raise ValueError(f"document must be cataloged exactly once: {relative}")
-    skill = (root / REQUIRED[-1]).read_text()
-    if not skill.startswith("---\nname: berad-sdk-development\ndescription: Use when "):
-        raise ValueError("invalid public SDK skill identity/description")
+    owners = [root] + [root / module["id"] for module in modules]
+    for owner in owners:
+        docs = owner / "docs"
+        if not docs.is_dir():
+            continue
+        catalog = (docs / "README.md").read_text()
+        destinations = [unquote(urlsplit(link).path) for link in LINK.findall(catalog)]
+        for path in docs.rglob("*.md"):
+            relative = path.relative_to(docs).as_posix()
+            if destinations.count(relative) != 1:
+                raise ValueError(f"document must be cataloged exactly once: {path.relative_to(root)}")
+    names = set()
+    for path in sorted((root / ".opencode/skill").rglob("SKILL.md")):
+        text = path.read_text()
+        identity = re.match(r"---\nname: ([a-z0-9-]+)\ndescription: Use when [^\n]+\n---\n", text)
+        if identity is None or identity[1] != path.parent.name:
+            raise ValueError(f"invalid public SDK skill identity/description: {path.relative_to(root)}")
+        if identity[1] in names:
+            raise ValueError(f"duplicate public SDK skill: {identity[1]}")
+        names.add(identity[1])
+    if "berad-sdk-development" not in names:
+        raise ValueError("public SDK foundation skill missing")
     if "MIT License" not in (root / "LICENSE").read_text():
         raise ValueError("missing MIT license")
     return modules

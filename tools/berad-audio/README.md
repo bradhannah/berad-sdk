@@ -7,6 +7,10 @@ Project-authored source is MIT; see [LICENSE](LICENSE). No game media is include
 
 ## Current commands
 
+See the [tool documentation catalog](docs/README.md), including the
+[editor guide](docs/EDITOR.md), [catalog contract](docs/CATALOG.md) and
+[neutral project quickstart](../../modules/berad-audio/docs/QUICKSTART.md).
+
 `cmd/audio-probe` analyzes an explicitly selected WAV/MP3/OGG source with `-check`
 or runs a bounded standalone Oto audition. `-file` is required; there is no game
 checkout/default manifest lookup. `-check` opens no audio device and writes no
@@ -86,12 +90,8 @@ make audio-editor
 Use `-project /absolute/path/to/project.json` for project-specific routing labels,
 slider mapping and other configured policies. Running with neither option reports
 an argument error; this generic SDK tool does not automatically select Redux.
-For the complete Redux policy preset from this directory, build/run its launcher:
-
-```sh
-make -C ../../../UltimaVRedux audio-editor
-../../../UltimaVRedux/bin/audio-editor -library ../../../UltimaVRedux/internal/audio/assets/library.json
-```
+For consumer presets, use that application's maintained integration instructions
+and launcher. A sibling game checkout is not part of the SDK tool contract.
 
 From the SDK root, `make audio-tools` delegates to this module and uses the same
 `tools/berad-audio/bin/` outputs.

@@ -1,6 +1,6 @@
 ---
 name: berad-sdk-development
-description: Use when designing, extracting, implementing, reviewing, or validating a Berad SDK module or its consumer adapter.
+description: Use when designing, extracting, implementing, using, reviewing, or validating a Berad SDK runtime, authoring service, developer tool, or consumer adapter.
 ---
 
 # Berad SDK development
@@ -36,9 +36,19 @@ Resolve links from this skill directory, not the current consumer working direct
    unchanged supported-consumer fixture; publish an available dependency before
    pinning the game. Treat workspace convenience and actual installation separately.
 7. Complete the [module README](../../../docs/templates/module-readme.md), public
-   examples, relevant consumer docs, catalogs, and notices. Reconcile the final
-   diff and every required delivery. Report native observations and limitations
-   honestly. Humans merge.
+   examples, relevant consumer docs, catalogs, and notices. Account for skills,
+   contributor instructions, Help, and source-side duplicate retirement in the
+   extraction inventory. Reconcile the final diff and every required delivery.
+   Report native observations and limitations honestly. Humans merge.
+
+## Implemented system guidance
+
+Load [berad-audio-development](../berad-audio-development/SKILL.md) for audio
+runtime/backend, analysis/calibration, document/publication, terminal editor,
+catalog, project and probe work. It routes to the audio-owned contracts and
+neutral quickstart. Consumer policy stays in that consumer's integration guide.
+Text and graphics remain planned; do not infer delivered APIs or move their
+consumer guidance before an approved extraction establishes the boundary.
 
 ## Registered validation commands
 

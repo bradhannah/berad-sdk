@@ -17,9 +17,14 @@ there. Maintain durable API decisions in the resulting module docs/ADRs.
 
 ## Inventory and disposition
 
-| Existing implementation / caller / test / asset / document | Move, adapt, retain, retire | Reason and owner |
-| --- | --- | --- |
-| REPLACE | REPLACE | REPLACE |
+| Existing code / test / asset / document / skill / Help / instruction | SDK / consumer / orchestration / evidence owner | Move, split, adapt, retain, retire | Canonical destination and verification |
+| --- | --- | --- | --- |
+| REPLACE | REPLACE | REPLACE | REPLACE |
+
+Preserve unique contracts before reducing source-side guidance. Include inbound
+links/anchors, catalogs, skill triggers, current source maps and test helpers.
+Map legacy tests to mechanism coverage, live consumer coverage or an explicitly
+bounded oracle with a retirement condition. Retain historical rationale as such.
 
 ## Public and dependency boundary
 
@@ -62,8 +67,9 @@ module checks before claiming the repository gate covers newly added code.
 | --- | --- | --- | --- |
 | REPLACE | REPLACE | REPLACE | REPLACE |
 
-Review the final full diff, duplicate-implementation retirement, supported old
-consumer proof, and actual publication/integration. Checkpoints, PR submission,
+Review the final full diff, duplicate implementation/documentation/skill retirement,
+SDK-only and independent-consumer navigation/discovery, supported old-consumer
+proof, and actual publication/integration. Checkpoints, PR submission,
 human merge, and native acceptance are separate observations.
 
 Source guidance: [extraction guide](../EXTRACTION_GUIDE.md).

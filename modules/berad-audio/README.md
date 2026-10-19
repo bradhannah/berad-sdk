@@ -13,7 +13,7 @@ Use a reviewed published commit at the SDK path. Redux's dependency/import cutov
 follows an available SDK revision; no application-local replacement is required.
 Ambient and finite music transports, source analysis and document editing/persistence
 are available. The existing Bubble Tea editor now lives in the independently
-versioned [audio tools module](https://github.com/bradhannah/berad-sdk/tree/9cdfc4b0755f/tools/berad-audio),
+versioned [audio tools module](../../tools/berad-audio/README.md),
 alongside session, catalog and probe services. Redux supplies its project policy
 through a thin launcher and pins published runtime/tools revisions.
 The API is pre-stability; applications should
@@ -54,6 +54,10 @@ No stable-version compatibility promise or new native acceptance follows from
 this path migration.
 
 ## Ownership and usage
+
+Start with the [neutral quickstart](docs/QUICKSTART.md). The
+[audio documentation catalog](docs/README.md) routes detailed authoring contracts;
+the runtime contract below remains authoritative for playback.
 
 Supply a playback `Definition`, an asset `fs.FS`, and an explicit encoded-byte
 budget to `NewLibrary`. Metadata/windows/slices and unique asset bytes are frozen.
@@ -142,8 +146,8 @@ their PCM/WAV; no bundled game media or original installation is required.
 source snapshot. Supply `backend/ebitengine.Decode` for the supported WAV/MP3/OGG
 codecs or another decoder satisfying the root PCM contract. No device is opened.
 The source pathname becomes absolute; relative paths are resolved by the caller's
-current directory at loading. Project-relative asset roots belong to the future
-document/project layer, not this source-file API.
+current directory at loading. Project-relative asset roots belong to the
+document/project layer described below, not this source-file API.
 
 - Input is a regular local file, at most 128 MiB of encoded bytes. Analysis uses
   streamed 44.1 kHz stereo signed 16-bit PCM with 10 ms waveform/energy buckets.
@@ -302,8 +306,8 @@ convention. The caller resolves world wrapping first. Positional SFX may use a
 different profile; no stereo pan or occlusion is implied.
 
 Redux owns the JSON-to-playback bridge and its `GameAudioManager` facade. The
-game-owned `testdata/berad-audio-redux` fixture independently verifies that bridge,
-alongside a source planner shared with the compatibility baseline. Neither the
+game-owned `testdata/berad-audio-redux` fixture independently verifies that bridge.
+Game integration tests exercise its live adapter and source planner. Neither the
 game facade nor its JSON/media is a dependency or part of this module.
 
 ## Validation
