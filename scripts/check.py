@@ -35,7 +35,8 @@ FENCE = re.compile(r"^```[^\n]*\n.*?^```\s*$", re.MULTILINE | re.DOTALL)
 def files(root):
     result = []
     for current, directories, names in os.walk(root):
-        directories[:] = sorted(name for name in directories if name not in IGNORED)
+        directories[:] = sorted(name for name in directories if name not in IGNORED and
+                                not MODULE_CHECKS.INVENTORY.tool_output((Path(current) / name).relative_to(root)))
         for name in directories + names:
             path = Path(current) / name
             if path.is_symlink():

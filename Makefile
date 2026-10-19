@@ -27,6 +27,8 @@ audio-tools:
 
 # Only SDK-owned generated executables; retain validation proof and authored files.
 clean:
+	$(MAKE) -C tools/berad-audio clean
+	# Remove executables left by the previous repository-cache output layout too.
 	rm -f .cache/bin/audio-editor .cache/bin/audio-editor.exe
 	rm -f .cache/bin/audio-catalog .cache/bin/audio-catalog.exe
 	rm -f .cache/bin/audio-probe .cache/bin/audio-probe.exe

@@ -33,6 +33,8 @@ def inventory(root, manifest, paths):
             raise ValueError("published SDK module must not use replacements")
         allowed_mods.update((directory / "go.mod", directory / "testdata/consumer/go.mod"))
     for path in paths:
+        if INVENTORY.tool_output(path.relative_to(root)):
+            continue
         if path.name == "go.work" or path.name == "go.mod" and path not in allowed_mods:
             raise ValueError(f"unregistered runtime code/module: {path.relative_to(root)}")
         if path.suffix == ".go":
@@ -103,6 +105,8 @@ def fingerprint(root, module, lane, policy, tool_identity, dependencies=()):
         digest.update(selected["id"].encode())
         directory = root / selected["id"]
         for path in sorted(directory.rglob("*")):
+            if INVENTORY.tool_output(path.relative_to(root)):
+                continue
             if not path.is_file():
                 continue
             relative = path.relative_to(directory)
@@ -218,11 +222,11 @@ def execute_lane(root, module, lane, env, candidate_dependencies=()):
     source = root / module["id"]
     with tempfile.TemporaryDirectory(prefix="berad-sdk-") as temporary:
         library = Path(temporary) / "library"
-        shutil.copytree(source, library)
+        copy_module(root, module, library)
         replacements = []
         for dependency in candidate_dependencies:
             destination = Path(temporary) / dependency["id"]
-            shutil.copytree(root / dependency["id"], destination)
+            copy_module(root, dependency, destination)
             replacements.append((INVENTORY.import_path(dependency), destination))
         for directory in (library, *(destination for _, destination in replacements)):
             for name, destination in replacements:
@@ -271,5 +275,12 @@ def provision(root, modules, selectors=()):
         print(f"provision: {module['id']} (network-enabled, no validation proof)", flush=True)
         run(["go", "mod", "download"], source, env)
         with tempfile.TemporaryDirectory(prefix="berad-provision-") as temporary:
-            shutil.copytree(source, Path(temporary) / "library")
+            copy_module(root, module, Path(temporary) / "library")
             prepare_consumer(source, Path(temporary) / "consumer", module, env)
+
+
+def copy_module(root, module, destination):
+    source = root / module["id"]
+    def ignored(directory, names):
+        return [name for name in names if INVENTORY.tool_output((Path(directory) / name).relative_to(root))]
+    shutil.copytree(source, destination, ignore=ignored)

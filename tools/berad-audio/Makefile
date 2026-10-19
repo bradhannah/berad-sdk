@@ -1,7 +1,7 @@
 GO ?= go
 PYTHON ?= python3
 SDK_ROOT := ../..
-BIN_DIR := $(SDK_ROOT)/.cache/bin
+BIN_DIR := bin
 EXE := $(if $(filter Windows_NT,$(OS)),.exe,)
 
 .PHONY: build audio-editor audio-catalog audio-probe audio-runtime-probe plan validate quality-gate provision clean help
@@ -34,4 +34,4 @@ clean:
 	rm -f "$(BIN_DIR)/audio-runtime-probe" "$(BIN_DIR)/audio-runtime-probe.exe"
 
 help:
-	@printf '%s\n' 'build: build editor, catalog and standalone source probe' 'audio-editor/audio-catalog/audio-probe: individual builds' 'plan/validate/quality-gate: SDK-owned selected checks' 'provision: explicit network dependency setup' 'clean: remove tool binaries only'
+	@printf '%s\n' 'build: build tools into ./bin' 'audio-editor/audio-catalog/audio-probe: individual builds' './bin/audio-editor -library /path/to/library.json: open an explicit library' './bin/audio-editor -project /path/to/project.json: open with project-specific policies' 'plan/validate/quality-gate: SDK-owned selected checks' 'provision: explicit network dependency setup' 'clean: remove tool binaries only'

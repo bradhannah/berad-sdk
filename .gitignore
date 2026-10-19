@@ -1,4 +1,5 @@
 .cache/
+/tools/berad-*/bin/
 __pycache__/
 *.py[cod]
 .DS_Store

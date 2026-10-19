@@ -25,6 +25,19 @@ class ContractTests(unittest.TestCase):
     def test_foundation_is_self_contained(self):
         check.contracts(self.root)
 
+    def test_generated_tool_bin_is_pruned_without_hiding_nested_source(self):
+        generated = self.root / "tools/berad-audio/bin"
+        generated.mkdir(parents=True, exist_ok=True)
+        (generated / "audio-editor").write_bytes(b"executable")
+        (generated / "not-source.go").write_text("not part of validation input\n")
+        paths = check.files(self.root)
+        self.assertFalse(any(path.is_relative_to(generated) for path in paths))
+        nested = self.root / "tools/berad-audio/internal/bin"
+        nested.mkdir(parents=True, exist_ok=True)
+        (nested / "source.go").write_text("package bin\n")
+        self.assertIn(nested / "source.go", check.files(self.root))
+        check.contracts(self.root)
+
     def test_unregistered_go_code_is_rejected(self):
         (self.root / "modules/unregistered.go").write_text("package example\n")
         with self.assertRaisesRegex(ValueError, "unregistered"):

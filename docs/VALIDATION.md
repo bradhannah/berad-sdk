@@ -76,7 +76,10 @@ missing package completions remain errors.
 `make provision` (or the checker's explicit `provision` operation) enables ordinary
 network dependency provisioning for selected modules and their isolated consumers.
 It uses the same consumer layout and creates no validation proof. Normal validation
-never provisions dependencies. Keep generated binaries under `.cache/bin` and
+never provisions dependencies. Tool builds write to their own module-root `bin/`.
+Git, source inventory, lane fingerprints and isolated copies exclude only that
+generated directory; nested source directories such as `internal/bin` remain inputs.
+Keep generated binaries there and
 preserve `.cache/validation` during ordinary tool cleanup.
 
 Local regression results live under ignored `.cache/validation/`. They are an

@@ -64,7 +64,8 @@ every time. See [validation](docs/VALIDATION.md) for exact coverage and limitati
 
 Use `make plan MODULE=modules/berad-audio` for focused selection. `make provision`
 is explicit network-enabled setup, separate from offline validation. `make clean`
-removes only known generated tool binaries under `.cache/bin`; it keeps validation
+removes only known generated tool binaries under `tools/berad-audio/bin` (and old
+`.cache/bin` outputs); it keeps validation
 results and authored projects. Tool module selection becomes available when its
 implementation is registered, rather than treating an empty directory as acceptance.
 

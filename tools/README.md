@@ -11,5 +11,5 @@ Its module pins the published authoring API. See the
 [validation contract](../docs/VALIDATION.md).
 
 Use `make plan MODULE=tools/berad-audio`. Unknown modules fail
-explicitly. Binaries belong beneath ignored `.cache/bin`; tool cleanup must remove
+explicitly. Binaries belong beneath each tool module's ignored root `bin/`; tool cleanup must remove
 only declared binaries, keeping validation results and authored project files.

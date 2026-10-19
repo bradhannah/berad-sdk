@@ -10,6 +10,13 @@ def import_path(module):
     return REPOSITORY + module["id"]
 
 
+def tool_output(relative):
+    """Only the tool-module root bin is generated; internal/bin remains source."""
+    parts = relative.parts
+    return (len(parts) >= 3 and parts[0] == "tools" and
+            re.fullmatch(r"berad-[a-z]+", parts[1]) is not None and parts[2] == "bin")
+
+
 def normalize(manifest):
     if manifest == {"schema_version": 1, "stage": "foundation", "modules": []}:
         return []

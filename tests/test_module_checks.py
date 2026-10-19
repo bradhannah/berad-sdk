@@ -28,6 +28,25 @@ class ModuleChecksTests(unittest.TestCase):
     def identity(self, lane="unit", policy="policy", tools="tools"):
         return checks.fingerprint(self.root, self.module, lane, policy, tools)
 
+    def test_tool_output_is_not_an_input_or_isolated_source_but_internal_bin_is(self):
+        module = {"id": "tools/berad-audio", "checks": list(checks.INVENTORY.BASE_LANES), "requires": []}
+        source = self.root / module["id"]
+        (source / "bin").mkdir(parents=True)
+        (source / "internal/bin").mkdir(parents=True)
+        code = source / "internal/bin/source.go"
+        code.write_text("package bin\n")
+        identity = lambda: checks.fingerprint(self.root, module, "unit", "policy", "tools")
+        before = identity()
+        (source / "bin/audio-editor").write_bytes(b"generated executable")
+        self.assertEqual(before, identity())
+        copied = self.root / "isolated"
+        checks.copy_module(self.root, module, copied)
+        self.assertFalse((copied / "bin").exists())
+        self.assertEqual((copied / "internal/bin/source.go").read_text(), code.read_text())
+        code.write_text("package bin\n// changed source\n")
+        self.assertNotEqual(before, identity())
+        self.assertFalse(checks.INVENTORY.tool_output(Path("modules/berad-audio/bin/source.go")))
+
     def test_prose_and_unrelated_module_preserve_unit_proof_but_dependencies_invalidate(self):
         before = self.identity()
         (self.directory / "README.md").write_text("# Clarified audio contract\n")

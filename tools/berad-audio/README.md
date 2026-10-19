@@ -74,7 +74,27 @@ alongside an independently created Ebitengine/Oto context in a game process.
 
 ## Build and checks
 
-From this checkout, `make build` creates editor, catalog and probe under the SDK's `.cache/bin`.
+From `tools/berad-audio`, `make audio-editor` creates `./bin/audio-editor`
+(`.exe` on Windows). `make build` builds editor, catalog and source probe into
+that same local `bin/` directory. Then select an explicit library or project:
+
+```sh
+make audio-editor
+./bin/audio-editor -library /absolute/path/to/library.json
+```
+
+Use `-project /absolute/path/to/project.json` for project-specific routing labels,
+slider mapping and other configured policies. Running with neither option reports
+an argument error; this generic SDK tool does not automatically select Redux.
+For the complete Redux policy preset from this directory, build/run its launcher:
+
+```sh
+make -C ../../../UltimaVRedux audio-editor
+../../../UltimaVRedux/bin/audio-editor -library ../../../UltimaVRedux/internal/audio/assets/library.json
+```
+
+From the SDK root, `make audio-tools` delegates to this module and uses the same
+`tools/berad-audio/bin/` outputs.
 `make clean` removes only known tool executables, preserving validation and authored
 data. `make provision` explicitly provisions dependencies; it is network-enabled
 and separate from offline checks. `make plan` and `make quality-gate` delegate to
