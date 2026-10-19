@@ -13,8 +13,54 @@ checkout/default manifest lookup. `-check` opens no audio device and writes no
 source data. Device probing is native acceptance only when actually run on the
 named host; headless checks and compilation are separate evidence.
 
-The existing terminal editor and catalog command are being extracted next; they
-are not yet available in this tools module. Their Redux commands remain usable.
+`cmd/audio-editor` opens `-library <manifest>` with neutral defaults or
+`-project <descriptor>` with explicit targets/calibration/preview policy. `-check`
+validates without opening audio/UI or writing files. There is no implicit game
+manifest. The existing Bubble Tea workflows remain: recordings/moments, waveform,
+crop/duplicate/calibration, routing, temporary Soundscape, Save and Undo/Redo.
+
+`cmd/audio-catalog` takes `-library`, optional manifest-relative `-asset-root`, and
+explicit `-output`/`-guide` destinations. `-measure` records sample peak and RMS,
+not LUFS, true peak or listening approval. It hashes the exact supplied manifest;
+game source scanning and gameplay review notes remain consumer enrichment. It
+refuses output aliases of input files. Reports are derived outputs, not an atomic
+multi-file transaction: a second-output I/O failure can leave the first report.
+
+The optional `cmd/audio-runtime-probe` (`make audio-runtime-probe`) takes `-project`
+and `-cue`, and owns an Ebitengine graphics loop to verify native progress/release.
+`-soak` runs the existing muted one-minute lifecycle/heap check. It is deliberately
+separate from the terminal editor and standalone Oto source probe. Its 512 MiB
+encoded-library budget is not a total heap limit. Automated builds do not run these
+native/device observations or constitute listening acceptance.
+
+## Project integration
+
+Applications can call `editor.Run(document, options)` (the current package name is
+`editorui`; use an explicit import alias). The document comes from the SDK authoring
+package. Options supply slider gain, unassigned-recording category, target eligibility
+and help, ambient-creation defaults and save notices. Cue categories and group
+labels/targets come from the document's detached AuthoringTargets. Prefixes and
+special game target names do not select playback or picker eligibility.
+
+`project.Open` reads a version-1 tool descriptor with a required `library` path,
+resolved relative to the descriptor. `assetRoot` remains library-relative. Optional
+`targets`, `calibration`, `calibrationFamilies`, `sliderGains` (11 values),
+`recordingCategories`, `targetPolicies`, `ambientPreset`, `mixLabel` and `savedNotice`
+provide standalone equivalents. This descriptor configures tools; it does not
+replace or extend the schema-3 audio manifest. Duplicate/unknown fields and invalid
+policies fail. The neutral default is linear sliders, active-RMS calibration, no
+invented world targets or ambient-creation profile, and SFX for unclassified cues.
+
+`session.Documents` owns admission and completion of detached document operations.
+The frontend serializes Begin/Complete; a worker executes Job.Run exactly once.
+There is one outstanding operation. Stale or approval-rejected completion merges
+actual publication facts while retaining newer edits; foreign/duplicate results
+cannot retire another job. Publication is allowed to finish before normal quit.
+Source-load/request generations and input focus remain in the TUI. Source-bound
+AUTO approval uses the shared authoring CalibrationDraft transaction.
+
+All exported entry points are experimental. Runtime controls do not open terminal
+UI; tools do not own game state, persisted player settings or production media.
 
 ## Reusable audition
 
@@ -28,7 +74,7 @@ alongside an independently created Ebitengine/Oto context in a game process.
 
 ## Build and checks
 
-From this checkout, `make build` creates the probe under the SDK's `.cache/bin`.
+From this checkout, `make build` creates editor, catalog and probe under the SDK's `.cache/bin`.
 `make clean` removes only known tool executables, preserving validation and authored
 data. `make provision` explicitly provisions dependencies; it is network-enabled
 and separate from offline checks. `make plan` and `make quality-gate` delegate to

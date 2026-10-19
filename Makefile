@@ -30,3 +30,4 @@ clean:
 	rm -f .cache/bin/audio-editor .cache/bin/audio-editor.exe
 	rm -f .cache/bin/audio-catalog .cache/bin/audio-catalog.exe
 	rm -f .cache/bin/audio-probe .cache/bin/audio-probe.exe
+	rm -f .cache/bin/audio-runtime-probe .cache/bin/audio-runtime-probe.exe
