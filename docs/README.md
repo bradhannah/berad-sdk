@@ -26,7 +26,8 @@ Every retained Markdown document beneath `docs/` is cataloged exactly once:
 ## Requirement language
 
 System documentation is maintained with its implementation:
-[audio runtime/authoring catalog](../modules/berad-audio/docs/README.md) and
+[audio runtime/authoring catalog](../modules/berad-audio/docs/README.md),
+[text API catalog](../modules/berad-text/docs/README.md), and
 [audio tools catalog](../tools/berad-audio/docs/README.md). The SDK-owned public
 skills route to these contracts; consumer integration guides own application policy.
 
