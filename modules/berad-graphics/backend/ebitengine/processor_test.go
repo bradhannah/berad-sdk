@@ -74,7 +74,9 @@ func TestCacheExactParametersInvalidationBorrowLifetimeAndLimits(t *testing.T) {
 	if _, err := processor.Derive(source, graphics.Operation{}); err == nil {
 		t.Fatal("invalid operation accepted")
 	}
-	processor.Derive(source, graphics.TintRGB(255, 0, 0))
+	if _, err := processor.Derive(source, graphics.RGBGain(.25, graphics.Selection{})); err != nil {
+		t.Fatal(err)
+	}
 	if processor.Stats().Derived > 2 {
 		t.Fatal("unbounded cache")
 	}
@@ -113,8 +115,9 @@ func TestAdditiveAlphaPulsePreservesRGBAndSurfaceTargets(t *testing.T) {
 	if err := backend.DrawAdditiveChannels(b, source, 40, 70, 90, .8, options); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(pixels(a), pixels(b)) {
-		t.Fatal("independent additive alpha unexpectedly modulated RGB")
+	want := bytes.Repeat([]byte{40, 70, 90, 255}, 15)
+	if !bytes.Equal(pixels(a), want) || !bytes.Equal(pixels(b), want) {
+		t.Fatal("additive RGB must match supplied channels at both alpha factors", pixels(a), pixels(b))
 	}
 	var surface backend.Surface
 	buffer, err := surface.Resize(3, 5)
@@ -143,35 +146,83 @@ func TestAdditiveAlphaPulsePreservesRGBAndSurfaceTargets(t *testing.T) {
 	}
 }
 
-func TestRegionCopyNonzeroOriginAndFrameAnchor(t *testing.T) {
-	atlas := ebiten.NewImage(40, 30)
+func TestRegionCopyNonzeroOriginPaddingAndOwnership(t *testing.T) {
+	atlas := ebiten.NewImage(9, 8)
 	defer atlas.Deallocate()
-	atlas.Fill(color.RGBA{R: 80, A: 128})
-	copy, err := backend.CopyRegion(atlas, image.Rect(7, 9, 25, 18), graphics.Insets{Left: 2, Top: 3, Right: 1, Bottom: 4})
+	payload := make([]byte, 9*8*4)
+	for y := range 8 {
+		for x := range 9 {
+			copy(payload[(y*9+x)*4:], []byte{byte(x * 10), byte(y * 10), 20, 128})
+		}
+	}
+	atlas.WritePixels(payload)
+	source := atlas.SubImage(image.Rect(2, 1, 8, 7)).(*ebiten.Image)
+	owned, err := backend.CopyRegion(source, image.Rect(3, 2, 6, 4), graphics.Insets{Left: 2, Top: 1, Right: 1, Bottom: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer copy.Deallocate()
-	if copy.Bounds() != image.Rect(0, 0, 21, 16) || pixels(copy)[3] != 0 || pixels(copy)[(3*21+2)*4] != 80 {
-		t.Fatal("origin/padding")
+	defer owned.Deallocate()
+	want := make([]byte, 6*6*4)
+	for y := range 2 {
+		for x := range 3 {
+			copy(want[((y+1)*6+x+2)*4:], []byte{byte((x + 3) * 10), byte((y + 2) * 10), 20, 128})
+		}
 	}
-	processor, _ := backend.NewProcessor(backend.DefaultLimits())
+	if owned.Bounds() != image.Rect(0, 0, 6, 6) || !bytes.Equal(pixels(owned), want) {
+		t.Fatal("wrong source region, zero origin, channels or asymmetric padding", pixels(owned))
+	}
+	atlas.Clear()
+	if !bytes.Equal(pixels(owned), want) {
+		t.Fatal("owned copy aliases atlas")
+	}
+	owned.Clear()
+	if !bytes.Equal(pixels(atlas), make([]byte, len(payload))) {
+		t.Fatal("owned copy mutated atlas")
+	}
+	processor, err := backend.NewProcessor(backend.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer processor.Close()
-	snapshot, err := processor.Snapshot(copy)
-	if err != nil {
+	if _, err := processor.Derive(owned); err != nil {
 		t.Fatal(err)
 	}
-	frame, _ := graphics.NewFrame(snapshot, image.Pt(30, 30), image.Pt(5, 6), image.Pt(2, 3))
-	target := ebiten.NewImage(40, 40)
-	defer target.Deallocate()
-	if err := processor.DrawFrame(target, frame, ebiten.DrawImageOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if pixels(target)[((3+3)*40+3+2)*4] != 80 {
-		t.Fatal("logical anchor placement")
-	}
-	copy.Dispose() // Permanent retirement; Deallocate alone is a reusable engine resource reset.
-	if _, err := processor.Snapshot(copy); err == nil {
+	owned.Dispose() // Permanent retirement; Deallocate alone is a reusable engine resource reset.
+	if _, err := processor.Derive(owned); err == nil {
 		t.Fatal("disposed source revived cached snapshot")
+	}
+}
+
+func TestAdditiveChannelsTransparentTargetAndPartialSource(t *testing.T) {
+	source, target := ebiten.NewImage(1, 1), ebiten.NewImage(3, 1)
+	defer source.Deallocate()
+	defer target.Deallocate()
+	source.Fill(color.White)
+	for _, sample := range []struct {
+		alpha float32
+		want  byte
+	}{{.2, 51}, {.8, 204}} {
+		target.Clear()
+		options := ebiten.DrawImageOptions{Blend: ebiten.BlendLighter}
+		options.GeoM.Translate(1, 0)
+		options.ColorScale.Scale(0, 0, 0, 0) // Explicit channel drawing replaces this scale.
+		if err := backend.DrawAdditiveChannels(target, source, 40, 70, 90, sample.alpha, options); err != nil {
+			t.Fatal(err)
+		}
+		want := []byte{0, 0, 0, 0, 40, 70, 90, sample.want, 0, 0, 0, 0}
+		if !bytes.Equal(pixels(target), want) {
+			t.Fatalf("alpha %v: %v != %v", sample.alpha, pixels(target), want)
+		}
+		if options.ColorScale.R() != 0 || options.GeoM.Element(0, 2) != 1 {
+			t.Fatal("caller options mutated")
+		}
+	}
+	source.WritePixels([]byte{128, 64, 32, 128})
+	target.Clear()
+	if err := backend.DrawAdditiveChannels(target, source, 255, 255, 255, .5, ebiten.DrawImageOptions{Blend: ebiten.BlendLighter}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(pixels(target), []byte{128, 64, 32, 64, 0, 0, 0, 0, 0, 0, 0, 0}) {
+		t.Fatal("partial source channels were treated as ordinary opacity", pixels(target))
 	}
 }

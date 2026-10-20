@@ -59,7 +59,7 @@ from the pinned, licensed x/image Go-font dependency; synthetic bitmap pixels ar
 created by tests. No new local go:embed exemption is introduced.
 
 Berad Graphics uses the same declared `native-render` lane for backend and consumer
-pixel assertions. Its root CPU image/mask/frame package itself requires no display.
+pixel assertions. Its root CPU image/mask/cycle package itself requires no display.
 Synthetic media exercises non-square/nonzero-origin images, procedural sampling,
 partial alpha, additive channels, clipped/fractional mask draws, immutable borrows,
 cache eviction and explicit invalidation. `make graphics-demo-smoke` separately

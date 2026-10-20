@@ -82,9 +82,6 @@ func NewLibrary(definition Definition, files fs.FS, maxBytes int64) (*Library, e
 	return library, nil
 }
 
-// Definition returns detached maps, slices and windows.
-func (library *Library) Definition() Definition { return cloneDefinition(library.definition) }
-
 // EncodedBytes excludes decoder, backend and PCM buffers.
 func (library *Library) EncodedBytes() int64 { return library.bytes }
 

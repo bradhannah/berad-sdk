@@ -74,11 +74,14 @@ func TestImmutableAnalysisAndSourceVerification(t *testing.T) {
 	if math.Abs(before.MeasuredDB-wantRMS) > 1e-8 {
 		t.Fatalf("stereo mean-energy calibration changed: got %v want %v", before.MeasuredDB, wantRMS)
 	}
-	peaks := clip.Peaks()
-	clear(peaks)
-	after, err := clip.SuggestCalibration(window, authoring.DefaultCalibrationOptions())
+	window.StartMs, window.EndMs = 0, clip.DurationMs()
+	unchanged, ok := clip.SuggestedWindow()
+	if !ok || unchanged.StartMs != 190 || unchanged.EndMs != 810 {
+		t.Fatal("a returned window altered authoritative analysis", unchanged)
+	}
+	after, err := clip.SuggestCalibration(unchanged, authoring.DefaultCalibrationOptions())
 	if err != nil || before != after || clip.PeakBetween(200, 400) == 0 {
-		t.Fatal("a waveform view altered authoritative analysis")
+		t.Fatal("a returned window altered authoritative analysis")
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -252,13 +255,68 @@ func TestCalibrationConstrainsRareSamplePeak(t *testing.T) {
 	}
 }
 
+func TestGatedCalibrationReferenceToneAndRelativeGate(t *testing.T) {
+	// A -20 dBFS peak, 1 kHz sine is approximately -23 LUFS in one channel;
+	// two equal channels add 10*log10(2). This signal-level reference does not
+	// derive expected values from the implementation's filter coefficients.
+	// The tolerance allows PCM quantization, filter startup and partial gate
+	// windows at the loud/quiet transition; this is not meter certification.
+	for _, test := range []struct {
+		name     string
+		channels int
+		quiet    bool
+	}{
+		{"one channel", 1, false},
+		{"two channels", 2, false},
+		{"relative gate", 2, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path, data := sourceFixture(t, 10000)
+			clear(data[44:])
+			frames := (len(data) - 44) / 4
+			for frame := range frames {
+				amplitude := 0.1
+				if test.quiet && frame >= frames/2 {
+					// -60 dBFS peak: above the absolute gate but far below the
+					// relative gate. Including it would lower the result ~3 dB.
+					amplitude = 0.001
+				}
+				sample := int16(math.Round(32768 * amplitude * math.Sin(2*math.Pi*1000*float64(frame)/authoring.EditorSampleRate)))
+				for channel := range test.channels {
+					binary.LittleEndian.PutUint16(data[44+frame*4+channel*2:], uint16(sample))
+				}
+			}
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			clip, err := authoring.LoadRecording(path, ebitengine.Decode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			suggestion, err := clip.SuggestCalibration(nil, authoring.CalibrationOptions{
+				Method: authoring.GatedLoudness, TargetDB: -23,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := -23 + 10*math.Log10(float64(test.channels))
+			if math.Abs(suggestion.MeasuredDB-want) > 0.2 {
+				t.Fatalf("reference tone: measured %.4f, want %.4f ±0.2 LU", suggestion.MeasuredDB, want)
+			}
+			if suggestion.Limited || math.Abs(suggestion.GainDB-(-23-suggestion.MeasuredDB)) > 1e-8 {
+				t.Fatal("unlimited correction did not reach target", suggestion)
+			}
+		})
+	}
+}
+
 func TestAuthoringStreamGainPreservesSnapshotAndOddReadSeek(t *testing.T) {
 	path, _ := sourceFixture(t, 100)
 	clip, err := authoring.LoadRecording(path, ebitengine.Decode)
 	if err != nil {
 		t.Fatal(err)
 	}
-	peaks := clip.Peaks()
+	peak := clip.PeakBetween(0, clip.DurationMs())
 	stream, err := clip.Stream(&authoring.PlaybackWindow{StartMs: 20, EndMs: 60}, false)
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +353,7 @@ func TestAuthoringStreamGainPreservesSnapshotAndOddReadSeek(t *testing.T) {
 	if err := stream.SetGain(math.NaN()); !errors.Is(err, authoring.ErrLibrary) {
 		t.Fatal(err)
 	}
-	if len(peaks) != len(clip.Peaks()) || peaks[2] != clip.Peaks()[2] {
+	if peak != clip.PeakBetween(0, clip.DurationMs()) {
 		t.Fatal("audition gain mutated source analysis")
 	}
 }

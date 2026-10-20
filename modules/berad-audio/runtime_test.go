@@ -156,11 +156,29 @@ func TestLibrarySnapshotOwnsNestedMetadataAndAssets(t *testing.T) {
 	window.End = 99 * time.Second
 	definition.Cues["accept"].Recordings[0] = "wrong"
 	clear(files["a.pcm"].Data)
-	view := library.Definition()
-	view.Recordings["a"].Window.End = 7 * time.Second
-	if library.Definition().Recordings["a"].Window.End != 2*time.Millisecond ||
-		library.Definition().Cues["accept"].Recordings[0] != "a" || library.EncodedBytes() != 8 {
-		t.Fatal("mutable library view")
+	host := new(backend)
+	options := audio.DefaultOptions(host, func(data []byte, _ string, _ int) (audio.PCMStream, error) {
+		return &pcm{Reader: bytes.NewReader(data), length: int64(len(data))}, nil
+	})
+	runtime, err := audio.NewRuntime(library, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := runtime.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	result, err := runtime.Play("accept", audio.DefaultPlayOptions())
+	if err != nil || result.Outcome != audio.Admitted {
+		t.Fatal("input mutation retargeted playback", result, err)
+	}
+	if status := result.Voice.Status(); status.Recording != "a" || status.Duration != time.Millisecond || library.EncodedBytes() != 8 {
+		t.Fatal("input mutation changed the frozen window", status)
+	}
+	played, err := host.players[0].read(4)
+	if err != nil || !bytes.Equal(played, []byte{5, 6, 7, 8}) {
+		t.Fatal("input mutation changed selected PCM", played, err)
 	}
 	_, err = audio.NewLibrary(definition, files, 7)
 	if !errors.Is(err, audio.ErrInvalidLibrary) {

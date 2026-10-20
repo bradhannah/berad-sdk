@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"math"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -17,7 +16,7 @@ const (
 	defaultLayoutWork = 8 << 20
 	maxLayoutLines    = 8192
 	maxLayoutGlyphs   = 131072
-	alignDivisor      = 2
+	maxLayoutExtent   = 1 << 30
 )
 
 var (
@@ -30,7 +29,6 @@ var (
 	errRange         = errors.New("text: invalid UTF-8 range")
 	errCaretOffset   = errors.New("text: invalid caret offset")
 	errCaretLine     = errors.New("text: caret has no line")
-	errPoint         = errors.New("text: nonfinite point")
 )
 
 // Point and Rect use layout-local pixels, independent of camera/window coordinates.
@@ -45,31 +43,14 @@ func (r Rect) Width() float64 { return r.Max.X - r.Min.X }
 // Height returns the vertical extent.
 func (r Rect) Height() float64 { return r.Max.Y - r.Min.Y }
 
-// Contains reports half-open point coverage.
-func (r Rect) Contains(p Point) bool {
-	return p.X >= r.Min.X && p.Y >= r.Min.Y && p.X < r.Max.X && p.Y < r.Max.Y
-}
-
-// Align selects horizontal placement within a supplied width.
-type Align uint8
-
-// Alignment values retain source order; they do not select text direction.
-const (
-	AlignStart Align = iota
-	AlignCenter
-	AlignEnd
-)
-
-// LayoutOptions use zero Width for no soft wrapping and zero LineSpacing for
-// natural line spacing. Explicit positive spacing may overlap tall lines.
+// LayoutOptions use zero Width for no soft wrapping. Lines use natural spacing.
 // TopAlign aligns mixed font tops instead of baselines for compatibility layouts.
 // MaxWork bounds total text bytes submitted to measurement/shaping (default 8 MiB).
 type LayoutOptions struct {
-	Width, LineSpacing float64
-	Align              Align
-	TopAlign           bool
-	DefaultFont        *Font
-	MaxWork            int
+	Width       float64
+	TopAlign    bool
+	DefaultFont *Font
+	MaxWork     int
 }
 
 type shapedRun struct {
@@ -112,7 +93,7 @@ type Layout struct {
 	key         [32]byte
 }
 
-// NewLayout shapes compatible adjacent font runs across paint/tag boundaries.
+// NewLayout shapes compatible adjacent font runs across paint boundaries.
 // Colours do not change geometry. Horizontal engine shaping is used; queries
 // expose actual cluster coverage, not invented interior-ligature caret accuracy.
 func NewLayout(content *Content, options LayoutOptions) (*Layout, error) {
@@ -135,10 +116,13 @@ func NewLayout(content *Content, options LayoutOptions) (*Layout, error) {
 	if err := layout.buildLines(font, options, &budget); err != nil {
 		return nil, err
 	}
+	if !validLayoutRect(layout.bounds) || !validLayoutRect(layout.ink) {
+		return nil, errLayoutExtent
+	}
 	digest := sha256.New()
 	digest.Write(content.key[:])
 	digest.Write(font.key[:])
-	writeNumbers(digest, options.Width, options.LineSpacing, float64(options.Align))
+	writeNumbers(digest, options.Width)
 	if options.TopAlign {
 		digest.Write([]byte{1})
 	} else {
@@ -150,8 +134,17 @@ func NewLayout(content *Content, options LayoutOptions) (*Layout, error) {
 }
 
 func validLayoutOptions(options LayoutOptions) bool {
-	return finite(options.Width) && options.Width >= 0 && finite(options.LineSpacing) &&
-		options.LineSpacing >= 0 && options.Align <= AlignEnd && options.MaxWork >= 0
+	return finite(options.Width) && options.Width >= 0 && options.Width <= maxLayoutExtent && options.MaxWork >= 0
+}
+
+func validLayoutRect(rect Rect) bool {
+	return validLayoutCoordinate(rect.Min.X) && validLayoutCoordinate(rect.Min.Y) &&
+		validLayoutCoordinate(rect.Max.X) && validLayoutCoordinate(rect.Max.Y) &&
+		rect.Min.X <= rect.Max.X && rect.Min.Y <= rect.Max.Y
+}
+
+func validLayoutCoordinate(value float64) bool {
+	return finite(value) && value >= -maxLayoutExtent && value <= maxLayoutExtent
 }
 
 func (l *Layout) buildLines(font *Font, options LayoutOptions, budget *int) error {
@@ -314,7 +307,7 @@ func (l *Layout) shapeRuns(start, end int, fallback *Font, budget *int) ([]shape
 		}
 		width += run.width
 	}
-	if !finite(width) || !finite(ascent+descent+gap) || width > 1<<30 {
+	if !finite(width) || !finite(ascent+descent+gap) || width > maxLayoutExtent {
 		return nil, fallback.metrics, 0, errLayoutExtent
 	}
 
@@ -329,18 +322,11 @@ func (l *Layout) addLine(
 		return 0, err
 	}
 	positionX := 0.0
-	if options.Width > 0 {
-		switch options.Align {
-		case AlignStart:
-			// Keep the natural origin.
-		case AlignCenter:
-			positionX = (options.Width - width) / alignDivisor
-		case AlignEnd:
-			positionX = options.Width - width
-		}
-	}
 	height := metrics.Ascent + metrics.Descent
 	bounds := Rect{Point{positionX, positionY}, Point{positionX + width, positionY + height}}
+	if !validLayoutRect(bounds) {
+		return 0, errLayoutExtent
+	}
 	line := Line{start, end, next, bounds, positionY + metrics.Ascent}
 	l.lines = append(l.lines, line)
 	l.bounds.Max.X = max(l.bounds.Max.X, max(width, options.Width))
@@ -359,9 +345,6 @@ func (l *Layout) addLine(
 	}
 	if len(l.glyphs) > maxLayoutGlyphs {
 		return 0, errGlyphLimit
-	}
-	if options.LineSpacing > 0 {
-		return options.LineSpacing, nil
 	}
 
 	return height + metrics.LineGap, nil
@@ -458,44 +441,8 @@ func (l *Layout) Content() *Content { return l.content }
 // Bounds returns logical placement extents.
 func (l *Layout) Bounds() Rect { return l.bounds }
 
-// InkBounds includes glyph bearings and overhangs.
-func (l *Layout) InkBounds() Rect { return l.ink }
-
 // Lines returns detached source ranges and placement metrics.
 func (l *Layout) Lines() []Line { return slices.Clone(l.lines) }
-
-// Hit is local geometric coverage, not an activation or visibility decision.
-type Hit struct {
-	Content    *Content
-	Start, End int
-	Bounds     Rect
-	Tags       []string
-}
-
-// HitTestLocal returns geometric candidates; host routing decides eligibility.
-func (l *Layout) HitTestLocal(point Point) []Hit {
-	var result []Hit
-	if !finite(point.X) || !finite(point.Y) {
-		return result
-	}
-	for _, c := range l.clusters {
-		if c.rect.Contains(point) {
-			result = append(result, Hit{l.content, c.start, c.end, c.rect, l.tags(c.start, c.end)})
-		}
-	}
-
-	return result
-}
-func (l *Layout) tags(start, end int) []string {
-	var result []string
-	for _, s := range l.content.spans {
-		if s.start < end && s.end > start && s.Tag != "" && !slices.Contains(result, s.Tag) {
-			result = append(result, s.Tag)
-		}
-	}
-
-	return result
-}
 
 // Coverage reports requested versus represented cluster coverage. A range cutting
 // a ligature expands to its cluster; it never silently reshapes a substring.
@@ -533,11 +480,11 @@ func (l *Layout) boundary(offset int) bool {
 // Caret reports a supported visual site, with explicit source snapping. Upstream
 // selects the preceding visual line at a soft wrap; default selects the next.
 type Caret struct {
-	Content                   *Content
-	Requested, Offset         int
-	Position                  Point
-	Height                    float64
-	Snapped, Inside, Upstream bool
+	Content           *Content
+	Requested, Offset int
+	Position          Point
+	Height            float64
+	Snapped, Upstream bool
 }
 
 // CaretAt resolves an offset to a supported site with explicit wrap affinity.
@@ -561,7 +508,7 @@ func (l *Layout) CaretAt(offset int, upstream bool) (Caret, error) {
 		}
 
 		return Caret{l.content, offset, resolved, Point{positionX, line.Bounds.Min.Y},
-			line.Bounds.Height(), resolved != offset, true, upstream}, nil
+			line.Bounds.Height(), resolved != offset, upstream}, nil
 	}
 
 	return Caret{}, errCaretLine
@@ -571,34 +518,4 @@ func lineAcceptsCaret(line Line, hasNext bool, offset int, upstream bool) bool {
 	return offset >= line.Start && offset <= line.Next &&
 		(offset != line.End || line.Next != line.End || !hasNext || upstream) &&
 		(offset != line.Next || line.Next <= line.End || !hasNext)
-}
-
-// NearestCaret returns the nearest supported cluster site, including outside points.
-func (l *Layout) NearestCaret(point Point) (Caret, error) {
-	if !finite(point.X) || !finite(point.Y) {
-		return Caret{}, errPoint
-	}
-	best := math.Inf(1)
-	var result Caret
-	consider := func(offset int, x float64, line Line, upstream bool) {
-		dy := max(line.Bounds.Min.Y-point.Y, 0, point.Y-line.Bounds.Max.Y)
-		d := (x-point.X)*(x-point.X) + dy*dy
-		if d < best {
-			best = d
-			result = Caret{Content: l.content, Requested: offset, Offset: offset, Position: Point{x, line.Bounds.Min.Y},
-				Height: line.Bounds.Height(), Inside: line.Bounds.Contains(point), Upstream: upstream, Snapped: false}
-		}
-	}
-	for _, line := range l.lines {
-		consider(line.Start, line.Bounds.Min.X, line, false)
-		for _, c := range l.clusters {
-			if c.start >= line.Start && c.end <= line.End {
-				consider(c.start, c.rect.Min.X, line, false)
-				consider(c.end, c.rect.Max.X, line, c.end == line.End)
-			}
-		}
-		consider(line.End, line.Bounds.Max.X, line, true)
-	}
-
-	return result, nil
 }

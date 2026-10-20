@@ -1,7 +1,6 @@
 package authoring
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"strconv"
@@ -35,32 +34,6 @@ func (e *LibraryEditor) NextRecordingID(sourceID string) (string, error) {
 		}
 		next++
 	}
-}
-
-// DuplicateClip creates metadata only. Bounds and optional cycle membership are
-// validated and published together as one undoable edit; source bytes never move.
-func (e *LibraryEditor) DuplicateClip(sourceID, newID string, window PlaybackWindow, appendCue string) error {
-	recording, exists := e.library.Recordings[sourceID]
-	if !exists || recording.File == nil {
-		return fmt.Errorf("%w: source clip needs an audio file", ErrAudioLibrary)
-	}
-	if _, exists := e.library.Recordings[newID]; exists {
-		return fmt.Errorf("%w: recording %s already exists", ErrAudioLibrary, newID)
-	}
-	path, err := e.RecordingPath(sourceID)
-	if err != nil {
-		return err
-	}
-	clip, err := LoadRecording(path, e.decode)
-	if err != nil {
-		return err
-	}
-	draft, err := e.BeginRecordingRegion(sourceID, clip)
-	if err != nil {
-		return err
-	}
-
-	return e.DuplicateRecordingRegion(context.Background(), draft, newID, &window, appendCue)
 }
 
 // AppendCueRecording adds one explicit cycle member, retaining the existing order.

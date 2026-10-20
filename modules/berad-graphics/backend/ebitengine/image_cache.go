@@ -54,7 +54,7 @@ func (cache *ImageCache) Put(key uint64, source *ebiten.Image) error {
 	if cache == nil || cache.entries == nil {
 		return ErrClosed
 	}
-	bounds, err := Bounds(source)
+	bounds, err := imageBounds(source)
 	if err != nil {
 		return err
 	}

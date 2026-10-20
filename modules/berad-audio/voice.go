@@ -21,7 +21,6 @@ type voice struct {
 	started, fadeIn, releaseStart, releaseDuration time.Duration
 	releaseGain                                    float64
 	paused                                         bool
-	pausedAt                                       time.Duration
 	result                                         *VoiceStatus
 }
 
@@ -132,9 +131,6 @@ func (runtime *Runtime) stop(voiceID uint64, fade, now time.Duration) {
 		runtime.retire(voiceID)
 
 		return
-	}
-	if playing.paused {
-		now = playing.pausedAt
 	}
 	if playing.releaseDuration > 0 && playing.releaseDuration-(now-playing.releaseStart) <= fade {
 		return

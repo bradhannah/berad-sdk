@@ -62,7 +62,7 @@ func TestUnrelatedHostUsesPublicAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := text.NewContent([]text.Span{{Text: "Reactor ", Font: font, Paint: "label"}, {Text: "\ufffc", Font: iconFont, Paint: "warning", Tag: "reactor"}, {Text: " online\n", Font: font, Paint: "label"}})
+	content, err := text.NewContent([]text.Span{{Text: "Reactor ", Font: font, Paint: "label"}, {Text: "\ufffc", Font: iconFont, Paint: "warning"}, {Text: " online\n", Font: font, Paint: "label"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,24 +89,9 @@ func TestUnrelatedHostUsesPublicAPI(t *testing.T) {
 	if _, err := layout.RangeRects(0, len(content.Text())); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := layout.NearestCaret(text.Point{X: 10, Y: 5}); err != nil {
-		t.Fatal(err)
-	}
 	palette["label"] = color.RGBA{G: 255, A: 255}
 	if err := renderer.Draw(target, layout, palette, text.DrawOptions{}); err != nil {
 		t.Fatal(err)
-	}
-	log, err := text.NewLog(2, 256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := log.Append(content); err != nil {
-		t.Fatal(err)
-	}
-	panel := new(text.Panel)
-	panel.Set(content)
-	if panel.Content() != content {
-		t.Fatal("panel lost source")
 	}
 	renderer.Close()
 	if _, err := layout.CaretAt(0, false); err != nil {

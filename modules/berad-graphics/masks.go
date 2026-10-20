@@ -79,25 +79,15 @@ func (dissolve *Dissolve) Reset() {
 	}
 }
 
-// Update clamps finite progress to [0,1], supports reversal and reports completion.
-func (dissolve *Dissolve) Update(progress float64) (bool, error) {
-	complete, _, err := dissolve.update(progress, nil)
-
-	return complete, err
-}
-
 // UpdatePixels updates only changed cells in an already initialized caller buffer.
 // Initialize with WritePixels, and do so again after Reset. It reports completion
 // and whether coverage changed so owners can avoid redundant GPU uploads.
+// Finite progress is clamped to [0,1]; reversal reuses the original permutation.
 func (dissolve *Dissolve) UpdatePixels(progress float64, destination []byte) (bool, bool, error) {
 	if len(destination) != len(dissolve.coverage)*channels {
 		return false, false, fmt.Errorf("%w: dissolve buffer size", ErrInvalid)
 	}
 
-	return dissolve.update(progress, destination)
-}
-
-func (dissolve *Dissolve) update(progress float64, destination []byte) (bool, bool, error) {
 	if !finite(progress) {
 		return false, false, fmt.Errorf("%w: nonfinite dissolve progress", ErrInvalid)
 	}
@@ -124,19 +114,9 @@ func (dissolve *Dissolve) update(progress float64, destination []byte) (bool, bo
 func (dissolve *Dissolve) setCell(point image.Point, value byte, destination []byte) {
 	index := point.Y*dissolve.width + point.X
 	dissolve.coverage[index] = value
-	if destination != nil {
-		for channel := range channels {
-			destination[index*channels+channel] = value
-		}
+	for channel := range channels {
+		destination[index*channels+channel] = value
 	}
-}
-
-// Pixels returns detached premultiplied white/transparent RGBA retention pixels.
-func (dissolve *Dissolve) Pixels() []byte {
-	result := make([]byte, len(dissolve.coverage)*channels)
-	dissolve.WritePixels(result)
-
-	return result
 }
 
 // WritePixels fills a caller-owned correctly sized buffer without allocation.

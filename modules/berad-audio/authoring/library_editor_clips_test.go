@@ -1,15 +1,17 @@
 package authoring
 
 import (
+	"context"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestDuplicateClipSharesFileAndAtomicallyAppendsOneUndoableVariant(t *testing.T) {
+func TestDuplicateRegionSharesFileAndAtomicallyAppendsOneUndoableVariant(t *testing.T) {
 	editor, _ := editorFixture(t)
 	require.NoError(t, editor.AddRecording("healing_03"))
+	require.Equal(t, "unreviewed", editor.RecordingFamily("healing_03"))
 	name, err := editor.NextRecordingID("healing_01")
 	require.NoError(t, err)
 	require.Equal(t, "healing_04", name)
@@ -19,7 +21,11 @@ func TestDuplicateClipSharesFileAndAtomicallyAppendsOneUndoableVariant(t *testin
 	bytesBefore, err := os.ReadFile(path)
 	require.NoError(t, err)
 	window := PlaybackWindow{StartMs: 20, EndMs: 60}
-	require.NoError(t, editor.DuplicateClip("healing_01", name, window, "sfx/SoundHeal"))
+	clip, err := editor.LoadRecording(context.Background(), path)
+	require.NoError(t, err)
+	draft, err := editor.BeginRecordingRegion("healing_01", clip)
+	require.NoError(t, err)
+	require.NoError(t, editor.DuplicateRecordingRegion(context.Background(), draft, name, &window, "sfx/SoundHeal"))
 	created := editor.Recording(name)
 	require.Equal(t, editor.Recording("healing_01").File, created.File)
 	require.Equal(t, editor.Recording("healing_01").Provenance, created.Provenance)
@@ -39,13 +45,26 @@ func TestDuplicateClipSharesFileAndAtomicallyAppendsOneUndoableVariant(t *testin
 	require.Equal(t, bytesBefore, bytesAfter)
 }
 
-func TestDuplicateClipRejectsInvalidBoundsNamesAndCyclesWithoutPartialEdits(t *testing.T) {
+func TestDuplicateRegionRejectsInvalidBoundsNamesAndCyclesWithoutPartialEdits(t *testing.T) {
 	editor, _ := editorFixture(t)
+	path, err := editor.RecordingPath("healing_01")
+	require.NoError(t, err)
+	clip, err := editor.LoadRecording(context.Background(), path)
+	require.NoError(t, err)
+	draft, err := editor.BeginRecordingRegion("healing_01", clip)
+	require.NoError(t, err)
 	before := cloneAudioValue(editor.library)
-	require.Error(t, editor.DuplicateClip("healing_01", "healing_02", PlaybackWindow{StartMs: 10, EndMs: 20}, ""))
-	require.Error(t, editor.DuplicateClip("healing_01", "new", PlaybackWindow{StartMs: 70, EndMs: 20}, ""))
-	require.Error(t, editor.DuplicateClip("healing_01", "new", PlaybackWindow{StartMs: 0, EndMs: 1000}, ""))
-	require.Error(t, editor.DuplicateClip("healing_01", "new", PlaybackWindow{StartMs: 0, EndMs: 20}, "music/track/town"))
+	for _, test := range []struct {
+		name, cue string
+		window    PlaybackWindow
+	}{
+		{"healing_02", "", PlaybackWindow{StartMs: 10, EndMs: 20}},
+		{"new", "", PlaybackWindow{StartMs: 70, EndMs: 20}},
+		{"new", "", PlaybackWindow{StartMs: 0, EndMs: 1000}},
+		{"new", "music/track/town", PlaybackWindow{StartMs: 0, EndMs: 20}},
+	} {
+		require.Error(t, editor.DuplicateRecordingRegion(context.Background(), draft, test.name, &test.window, test.cue))
+	}
 	require.Equal(t, before, editor.library)
 	require.False(t, editor.Dirty())
 	require.NoError(t, editor.AddRecording("footfall_009"))

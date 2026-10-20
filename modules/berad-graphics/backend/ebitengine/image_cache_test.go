@@ -4,7 +4,6 @@ import (
 	"image/color"
 	"testing"
 
-	graphics "github.com/bradhannah/berad-sdk/modules/berad-graphics"
 	backend "github.com/bradhannah/berad-sdk/modules/berad-graphics/backend/ebitengine"
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -41,21 +40,31 @@ func TestHostKeyCacheReplacementBypassAndBorrowLifetime(t *testing.T) {
 	if pixels(first)[0] != 255 {
 		t.Fatal("cache clear invalidated borrowed image")
 	}
-	processor, err := backend.NewProcessor(backend.DefaultLimits())
+}
+
+func TestHostKeyCacheLRUPromotionAndEvictedBorrow(t *testing.T) {
+	cache, err := backend.NewImageCache(2, 32)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer processor.Close()
-	padding := graphics.Insets{Left: 1, Top: 1, Right: 1, Bottom: 1}
-	a, err := processor.PadAndDerive(first, padding, graphics.Outline(color.RGBA{A: 255}, 0))
-	if err != nil {
+	images := []*ebiten.Image{ebiten.NewImage(2, 2), ebiten.NewImage(2, 2), ebiten.NewImage(2, 2)}
+	for _, source := range images {
+		t.Cleanup(source.Deallocate)
+		source.Fill(color.White)
+	}
+	for index := range 2 {
+		if err := cache.Put(uint64(index), images[index]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cache.Get(0)
+	if err := cache.Put(2, images[2]); err != nil {
 		t.Fatal(err)
 	}
-	b, err := processor.PadAndDerive(first, padding, graphics.Outline(color.RGBA{A: 255}, 0))
-	if err != nil || a != b {
-		t.Fatal("padding identity not cached", err)
+	if cache.Get(0) != images[0] || cache.Get(1) != nil || cache.Get(2) != images[2] || cache.Bytes() != 32 {
+		t.Fatal("LRU promotion/eviction")
 	}
-	if a.Bounds().Dx() != 4 || pixels(a)[3] != 255 {
-		t.Fatal("outline did not use padded source")
+	if pixels(images[1])[0] != 255 {
+		t.Fatal("eviction invalidated a borrow")
 	}
 }

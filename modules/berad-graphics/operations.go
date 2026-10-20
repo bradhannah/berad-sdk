@@ -14,9 +14,7 @@ const (
 	operationOutline
 	operationContour
 	operationCheckerOutline
-	operationTint
 	operationGain
-	operationOpacity
 	operationAlphaScale
 	operationScroll
 	operationWave
@@ -120,28 +118,12 @@ func CheckerOutline(first, second color.RGBA, phase int) Operation {
 	return operation
 }
 
-// TintRGB multiplies RGB by the supplied 8-bit factors; source alpha is unchanged.
-func TintRGB(red, green, blue byte) Operation {
-	var operation Operation
-	operation.kind, operation.first = operationTint, color.RGBA{R: red, G: green, B: blue, A: channelMaximum}
-
-	return operation
-}
-
 // RGBGain independently multiplies RGB with 8-bit saturation; zero means black.
-// Values above one can produce emissive RGB greater than alpha, by explicit contract.
+// This includes alpha-zero emission. Alpha is unchanged; gain above one can
+// produce emissive RGB greater than alpha, by explicit contract.
 func RGBGain(factor float64, selection Selection) Operation {
 	var operation Operation
 	operation.kind, operation.factor, operation.selection = operationGain, factor, selection
-
-	return operation
-}
-
-// Opacity scales all premultiplied channels together. Zero means transparent.
-func Opacity(factor float64) Operation {
-	var selection Selection
-	operation := RGBGain(factor, selection)
-	operation.kind = operationOpacity
 
 	return operation
 }
@@ -220,7 +202,7 @@ func (operation Operation) validate(source *Image) (image.Rectangle, error) {
 	if mask := operation.selection.mask; mask != nil && (mask.width != source.width || mask.height != source.height) {
 		return bounds, fmt.Errorf("%w: selection mask size", ErrInvalid)
 	}
-	if operation.kind == operationOpacity || operation.kind == operationAlphaScale {
+	if operation.kind == operationAlphaScale {
 		if operation.factor > 1 {
 			return bounds, fmt.Errorf("%w: alpha factor exceeds one", ErrInvalid)
 		}

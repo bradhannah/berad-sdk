@@ -12,6 +12,19 @@ implementers. Avoid large universal service interfaces and blanket aliases of an
 existing game subsystem. Consumer-specific interfaces can remain in the consumer.
 Optional capabilities and explicit configuration MAY support compatible growth.
 
+A concrete consumer is a reachable application or SDK-tool workflow, including
+authoring editors, catalogs and probes. A demonstration, test or hypothetical
+future game alone does not establish production demand. Add such capabilities
+when a real consumer needs them. Ownership, invalidation, error and resource-limit
+controls remain justified when necessary to safely use the retained service,
+even if an existing host relies on defaults. Keep implementation-only helpers
+private where package boundaries permit.
+
+Before expanding or retaining an optional API, distinguish production reachability
+from a syntactic call inside an unused adapter. Tests must assert the stated
+behavior with independent expected values where practical; a successful compile,
+a self-consistency check or a working demo does not prove the full contract.
+
 ## SDK-API-002 — Deliberate Ebitengine exposure
 
 This is an Ebitengine-first SDK family. Use the simplest useful integration.

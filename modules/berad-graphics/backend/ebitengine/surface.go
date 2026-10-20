@@ -11,7 +11,7 @@ import (
 
 // CopyRegion returns an owned, zero-origin GPU copy; it performs no CPU readback.
 func CopyRegion(source *ebiten.Image, region image.Rectangle, padding graphics.Insets) (*ebiten.Image, error) {
-	bounds, err := Bounds(source)
+	bounds, err := imageBounds(source)
 	if err != nil {
 		return nil, err
 	}

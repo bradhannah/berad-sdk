@@ -93,7 +93,7 @@ func (music *MusicPlayer) Pause() time.Duration {
 	}
 	if !playing.paused {
 		playing.device.Pause()
-		playing.paused, playing.pausedAt = true, runtime.now()
+		playing.paused = true
 	}
 
 	return boundedPosition(playing, runtime.rate, playing.device.Position())

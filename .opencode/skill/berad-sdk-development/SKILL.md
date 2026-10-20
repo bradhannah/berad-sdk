@@ -58,7 +58,7 @@ styled layout, local geometry, renderer ownership and native-render checks.
 Input, editing, focus, stacking and application text policy remain host-owned.
 Use the module guide's Make targets for repeatable checks and demonstrations.
 Load [berad-graphics-development](../berad-graphics-development/SKILL.md) for supplied
-images/frames, procedural kernels, colour/mask operations and Ebitengine resources.
+supplied pixels, procedural kernels, mask operations and Ebitengine resources.
 
 ## Registered validation commands
 

@@ -50,7 +50,6 @@ type LibraryEditor struct {
 	decode              audio.Decoder
 	calibrationPolicy   func(string) CalibrationOptions
 	importDestination   func(string, Recording, string, string) (string, error)
-	newRecordingFamily  string
 }
 
 // EditorOptions binds disk authoring to an explicit asset root and consumer
@@ -67,8 +66,6 @@ type EditorOptions struct {
 	// ImportDestination receives detached metadata and the source fingerprint.
 	// It must return a valid relative destination; no files have been published yet.
 	ImportDestination func(string, Recording, string, string) (string, error)
-	// NewRecordingFamily defaults to "unreviewed" for newly created empty slots.
-	NewRecordingFamily string
 }
 
 // DefaultEditorOptions supplies generic active-RMS calibration and relative
@@ -166,10 +163,6 @@ func newLibraryEditor(absolute, root string, options EditorOptions) *LibraryEdit
 		editor.importPathAllowed = options.AcceptExistingPath
 	}
 	editor.importDestination = options.ImportDestination
-	editor.newRecordingFamily = options.NewRecordingFamily
-	if editor.newRecordingFamily == "" {
-		editor.newRecordingFamily = "unreviewed"
-	}
 	editor.targets = cloneAudioValue(options.Targets)
 	editor.path = absolute
 	editor.persistence = defaultLibraryPersistence()
@@ -293,7 +286,7 @@ func (e *LibraryEditor) SetRecordingLicense(recordingID, license string) error {
 	return e.replace(next)
 }
 
-// AddRecording creates a named, intentionally empty slot for a later import.
+// AddRecording creates an unreviewed, intentionally empty slot for a later import.
 func (e *LibraryEditor) AddRecording(recordingID string) error {
 	if _, exists := e.library.Recordings[recordingID]; exists {
 		return fmt.Errorf("%w: recording %s already exists", ErrAudioLibrary, recordingID)
@@ -303,9 +296,9 @@ func (e *LibraryEditor) AddRecording(recordingID string) error {
 	next.Recordings[recordingID] = Recording{File: nil, CalibrationGainDB: nil, PlaybackWindow: nil,
 		CalibrationPolicy: "", CalibrationTargetDB: nil,
 		Provenance: unknownRecordingProvenance(), Note: "", SearchTerms: nil}
-	family := next.Taxonomy.RecordingFamilies[e.newRecordingFamily]
-	next.Taxonomy.RecordingFamilies[e.newRecordingFamily] = append(family, recordingID)
-	slices.Sort(next.Taxonomy.RecordingFamilies[e.newRecordingFamily])
+	const family = "unreviewed"
+	next.Taxonomy.RecordingFamilies[family] = append(next.Taxonomy.RecordingFamilies[family], recordingID)
+	slices.Sort(next.Taxonomy.RecordingFamilies[family])
 
 	return e.replace(next)
 }
