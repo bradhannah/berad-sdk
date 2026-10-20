@@ -57,8 +57,16 @@ For Berad Text, read the [module guide](../../../modules/berad-text/README.md) a
 styled layout, local geometry, renderer ownership and native-render checks.
 Input, editing, focus, stacking and application text policy remain host-owned.
 Use the module guide's Make targets for repeatable checks and demonstrations.
-Load [berad-graphics-development](../berad-graphics-development/SKILL.md) for supplied
+Load [berad-graphics-development](../berad-graphics-development/SKILL.md) for
 supplied pixels, procedural kernels, mask operations and Ebitengine resources.
+
+For Berad RNG, read the [module guide](../../../modules/berad-rng/README.md) and
+[stream contract](../../../modules/berad-rng/docs/API.md). Preserve exact draw
+counts, sequence and checkpoint compatibility; hosts own seed/stream policy.
+For Berad Input, read the [keyboard guide](../../../modules/berad-input/README.md).
+Hosts supply key observations, clock values and binding priorities. Consumption,
+suppression, transition barriers and repeat owners are distinct; do not normalize
+consumer timing or move command, native-text, widget or pointer routing into it.
 
 ## Registered validation commands
 

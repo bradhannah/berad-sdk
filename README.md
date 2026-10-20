@@ -19,6 +19,9 @@ with supplied fonts, styled layout/local geometry and native-render consumer
 checks. **Berad Graphics** is available on `main`,
 with supplied images, procedural effects, masks and explicit Ebitengine resource
 ownership. Pin only actually available reviewed revisions.
+**Berad RNG** and **Berad Input** are candidate modules for exact deterministic
+stream continuation and supplied-state keyboard mechanisms. Their consumers own
+seed/command policy, clocks, native device sampling and future pointer routing.
 Standalone version-qualified tools installation awaits reviewed default-branch
 availability or a separately authorized module tag; pinned Redux game/editor
 installation is verified independently. Neither is native listening acceptance.
@@ -30,6 +33,8 @@ a desktop backend and is separate from physical keyboard/mouse/IME acceptance.
 The [tool catalog](tools/README.md) describes the separately versioned tools layout.
 Use `make graphics-check`, `make graphics-demo`, and `make graphics-demo-smoke`
 for graphics and its synthetic independent atelier example.
+Use `make rng-check` and `make input-check` for the engine-free algorithm and
+independent consumer checks; these modules have no desktop/device prerequisite.
 
 ## Converting an existing subsystem?
 

@@ -9,10 +9,17 @@ GRAPHICS_DEMO_BIN = .cache/bin/berad-graphics-demo$(if $(filter Windows_NT,$(OS)
 .PHONY: plan validate quality-gate provision audio-runtime-check audio-tools-check audio-tools clean
 .PHONY: text-check build-text-demo text-demo text-demo-smoke
 .PHONY: graphics-check
+.PHONY: rng-check input-check
 .PHONY: build-graphics-demo graphics-demo graphics-demo-smoke
 
 graphics-check:
 	$(MAKE) quality-gate MODULE=modules/berad-graphics
+
+rng-check:
+	$(MAKE) quality-gate MODULE=modules/berad-rng
+
+input-check:
+	$(MAKE) quality-gate MODULE=modules/berad-input
 
 build-graphics-demo:
 	mkdir -p .cache/bin
