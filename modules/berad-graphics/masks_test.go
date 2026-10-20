@@ -5,6 +5,7 @@ import (
 	"image"
 	"math"
 	"math/rand/v2"
+	"slices"
 	"testing"
 
 	graphics "github.com/bradhannah/berad-sdk/modules/berad-graphics"
@@ -64,6 +65,63 @@ func TestDissolveReversalResetAndRandomOwnership(t *testing.T) {
 type orderedRandom struct{}
 
 func (orderedRandom) Intn(n int) int { return n - 1 }
+
+func TestDissolveLeadingQueriesPreserveStateAndSuppressSettledOrHiddenHighlights(t *testing.T) {
+	for _, hide := range []bool{false, true} {
+		pattern, err := graphics.NewDissolve(4, 2, hide, orderedRandom{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		buffer := make([]byte, 32)
+		pattern.WritePixels(buffer)
+		leading := func() []image.Point {
+			var points []image.Point
+			pattern.VisitLeading(.25, func(point image.Point) { points = append(points, point) })
+			return points
+		}
+		if len(leading()) != 0 {
+			t.Fatal("initial state has no leading cells")
+		}
+		if _, _, err := pattern.UpdatePixels(.5, buffer); err != nil {
+			t.Fatal(err)
+		}
+		before := bytes.Clone(buffer)
+		var want []image.Point
+		if !hide {
+			// Row-major order: four revealed cells, of which the newest two lead.
+			want = []image.Point{{X: 2, Y: 0}, {X: 3, Y: 0}}
+		}
+		for range 2 {
+			if got := leading(); !slices.Equal(got, want) {
+				t.Fatalf("hide=%v leading=%v, want %v", hide, got, want)
+			}
+		}
+		pattern.WritePixels(buffer)
+		if !bytes.Equal(buffer, before) {
+			t.Fatal("query mutated ordinary mask state")
+		}
+		if _, changed, err := pattern.UpdatePixels(.5, buffer); err != nil || changed {
+			t.Fatal("query advanced dissolve progress", err)
+		}
+		if _, _, err := pattern.UpdatePixels(1, buffer); err != nil {
+			t.Fatal(err)
+		}
+		if len(leading()) != 0 {
+			t.Fatal("completed silhouettes must have no highlights")
+		}
+		pattern.Reset()
+		pattern.WritePixels(buffer)
+		if len(leading()) != 0 {
+			t.Fatal("reset retained highlights")
+		}
+		if _, _, err := pattern.UpdatePixels(.5, buffer); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(leading(), want) {
+			t.Fatal("reset changed leading order")
+		}
+	}
+}
 
 func TestDissolveLiteralCoverageCompletionAndReversal(t *testing.T) {
 	for _, hide := range []bool{false, true} {
