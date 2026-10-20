@@ -7,6 +7,8 @@ The registered modules are:
 
 | Directory | Responsibility | Current availability here |
 | --- | --- | --- |
+| [`berad-rng/`](berad-rng/README.md) | Explicit deterministic random streams and exact checkpoint restoration | Candidate extraction; pin only validated, remotely available revisions |
+| [`berad-input/`](berad-input/README.md) | Supplied keyboard observations, binding admission, repeat and release protection | Keyboard-only candidate; host routing and future pointer handling remain separate |
 | [`berad-audio/`](berad-audio/README.md) | Cue/voice runtime, finite music, ambience and shared authoring | Experimental source on `main`; terminal/catalog/probe tools are a separate production consumer |
 | [`berad-text/`](berad-text/README.md) | Supplied immutable fonts, styled layout, source-range/caret geometry and bounded Ebitengine rendering | Experimental source on `main`; reviewed dependency pin consumed by Ultima V Redux; independent native-render checks registered |
 | [`berad-graphics/`](berad-graphics/README.md) | Supplied pixels, procedural kernels, masks and bounded Ebitengine resources | Experimental source on `main`; reviewed dependency pin consumed by Ultima V Redux |

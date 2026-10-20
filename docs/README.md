@@ -32,6 +32,9 @@ System documentation is maintained with its implementation:
 [graphics API catalog](../modules/berad-graphics/docs/README.md), and
 [audio tools catalog](../tools/berad-audio/docs/README.md). The SDK-owned public
 skills route to these contracts; consumer integration guides own application policy.
+The [RNG catalog](../modules/berad-rng/docs/README.md) owns deterministic stream
+continuation; the [Input guide](../modules/berad-input/README.md) owns supplied-key
+observations, binding filtering and release/repeat mechanics.
 
 **MUST** is required. **SHOULD** is the default unless a reviewed reason justifies
 an exception. **MAY** is optional. Stable `SDK-*` identifiers refer to the specific
