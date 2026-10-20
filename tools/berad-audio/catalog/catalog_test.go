@@ -35,9 +35,9 @@ func TestExplicitManifestMeasurementAndDetachedReport(t *testing.T) {
 	if err := value.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	value.Moments[0].Family = "<script>|x"
+	value.Moments[0].Family = "<script>|x\r\nnext"
 	report := value.GenerationGuide(catalog.ReportOptions{ManifestLabel: "chosen.json"})
-	if strings.Contains(report, "<script>") || !strings.Contains(report, "&lt;script&gt;\\|x") || !strings.Contains(report, "chosen.json") {
+	if strings.Contains(report, "<script>") || !strings.Contains(report, "&lt;script&gt;\\|x<br>next") || !strings.Contains(report, "chosen.json") {
 		t.Fatal("authored report values not escaped")
 	}
 	if strings.Contains(report, "internal/audio/assets") || value.SourceTreeSHA256 != "" {
