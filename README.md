@@ -70,15 +70,20 @@ No private checkout, service, or original game installation is required.
 
 ## Validate registered work
 
-Requires Python 3.10 or newer; runtime lanes also require their declared Go
-toolchain and provisioned dependencies. Make is a convenience:
+Requires Python 3.12 or newer; runtime lanes also require their declared Go
+toolchain and provisioned dependencies. Provision Python tools separately:
 
 ```sh
-python3 -I -B scripts/check.py plan
-python3 -I -B scripts/check.py validate
+make python-tools PYTHON_BOOTSTRAP=python3.12
+make python-check
+make plan
+make validate
 ```
 
-Equivalent Make targets are `make plan`, `make validate`, and `make quality-gate`.
+Make prefers `.cache/python-quality` after provisioning. The equivalent checker
+entry point is `.cache/python-quality/bin/python -I -B scripts/check.py` with
+`plan`, `validate` or `quality-gate` (Windows uses `Scripts/python.exe`). An explicit
+`PYTHON` selection must meet the 3.12 floor; unsupported ambient Python fails clearly.
 Provision pinned formatting/lint tools with `make tools`. `make format-check` and
 `make lint` enforce the [strict Go style policy](docs/LINTING.md) across all registered
 runtimes and tools, with zero unfiltered findings required by both final gates.
@@ -86,6 +91,13 @@ Use `make lint-fix MODULE=...` for a reviewed automatic-fix pass before manual c
 Checks are local and offline. Checker and registered module lanes reuse successful
 results when their inputs match; documentation checks remain inexpensive and run
 every time. See [validation](docs/VALIDATION.md) for exact coverage and limitations.
+Python source and tests use pinned Black 26.10.1 (stable, 88 columns) and Pylint
+4.0.4 with meaningful annotations and zero enabled findings. Use
+`make python-format`, `make python-format-check`, `make python-lint` or the combined
+`make python-check`; these need no Go compiler or native backend. Both final gates
+include repository-wide Python once, even when a module is selected. The
+[Python policy and opt-in hook](docs/LINTING.md#sdk-python-001--repository-wide-python-policy)
+describe provisioning, standalone helper use and existing-hook preservation.
 
 Use `make plan MODULE=modules/berad-audio` for focused selection. `make provision`
 is explicit network-enabled setup, separate from offline validation. `make clean`

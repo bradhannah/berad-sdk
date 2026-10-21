@@ -13,8 +13,8 @@ Every retained Markdown document beneath `docs/` is cataloged exactly once:
 | [SDK_CONVENTIONS.md](SDK_CONVENTIONS.md) | SDK architecture | Mandatory module, package, and documentation conventions |
 | [API_DESIGN.md](API_DESIGN.md) | SDK architecture | Public boundaries, ownership, and dependency exposure |
 | [COMPATIBILITY.md](COMPATIBILITY.md) | SDK maintenance | Versioning and coordinated consumer evolution |
-| [VALIDATION.md](VALIDATION.md) | SDK tooling | Actual foundation checks and module-onboarding requirements |
-| [LINTING.md](LINTING.md) | SDK engineering | Mandatory pinned formatting/lint, complete inventory, exceptions and zero-findings acceptance |
+| [VALIDATION.md](VALIDATION.md) | SDK tooling | Python/foundation checks, content-bound reuse and module-onboarding requirements |
+| [LINTING.md](LINTING.md) | SDK engineering | Pinned Go/Python formatting/lint, typed Python inventory, opt-in hook, exceptions and zero-findings acceptance |
 | [LICENSING.md](LICENSING.md) | SDK maintenance | Commercial-use and transferred-asset/source policy |
 | [EXTRACTION_GUIDE.md](EXTRACTION_GUIDE.md) | SDK architecture | Conversion workflow and review checkpoints |
 | [adr/0001-sdk-family-foundation.md](adr/0001-sdk-family-foundation.md) | SDK architecture | Accepted family structure and trade-offs |

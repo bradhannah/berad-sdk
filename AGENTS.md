@@ -36,6 +36,14 @@ are canonical, so the skill is not a second copy of the rules.
   unfiltered findings. Start with scoped `make lint-fix` on reviewed source, inspect
   automatic edits separately, then resolve manual findings without debt baselines
   or blanket exclusions. Preserve public APIs and use only narrowly justified suppressions.
+- Python tooling requires **Python 3.12+** and the repository-owned, fully hashed
+  Black **26.10.1** / Pylint **4.0.4** tool environment. Provision explicitly with
+  `make python-tools PYTHON_BOOTSTRAP=python3.12`; run `make python-format` and
+  `make python-check`. Use Black's stable 88-column style and meaningful function,
+  collection, schema and callback annotations, including tests. Require zero
+  enabled Pylint findings with its typing plugin; explain narrow suppressions
+  beside the code. No blanket category disables, debt baseline or Mypy gate.
+  Runtime utilities remain standard-library-only. See [Python policy](docs/LINTING.md#sdk-python-001--repository-wide-python-policy).
 - Add tests for meaningful behavior, regressions, boundaries, and failure paths.
   Avoid implementation-mirroring tests and duplicate integration scenarios.
 - Keep public contracts and examples current with implementation. Catalog retained
@@ -49,7 +57,9 @@ are canonical, so the skill is not a second copy of the rules.
 
 ## Registered checks
 
-Use `python3 -I -B scripts/check.py plan` to explain work, then `validate` or
-`quality-gate`. Both final targets cover the checker and registered module lanes;
+Use `make plan` to explain work, then `make validate` or `make quality-gate`.
+Make prefers the provisioned Python environment; an explicit `PYTHON` must meet
+the 3.12 floor. Both final targets cover Python exactly once repository-wide,
+the checker and registered module lanes, including with `MODULE=...`;
 unchanged invocations reuse eligible evidence. Native-platform and semantic API
 acceptance require their own scoped observations. See `docs/VALIDATION.md`.

@@ -1,0 +1,30 @@
+[tool.black]
+required-version = "26.10.1"
+target-version = ["py312"]
+line-length = 88
+preview = false
+unstable = false
+
+[tool.pylint.main]
+py-version = "3.12"
+load-plugins = ["pylint.extensions.typing"]
+persistent = false
+ignore = []
+ignore-patterns = []
+ignore-paths = []
+fail-on = ["I"] # Enabled informational findings also fail; their default exit bit is zero.
+# exit-zero stays false by omission. Pylint 4.0.4 treats this store_true option
+# as enabled even when TOML says false; real failing fixtures verify nonzero exits.
+
+[tool.pylint.reports]
+score = false
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint."messages control"]
+# All default diagnostics remain enabled. Exceptions belong beside reviewed code.
+enable = ["useless-suppression"]
+
+[tool.pylint.miscellaneous]
+notes = ["FIXME", "XXX", "TODO"]

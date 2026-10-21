@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Registered SDK checks and explicit, separately requested network provisioning."""
 
+from __future__ import annotations
+
 import argparse
-import importlib.util
+from collections.abc import Callable
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -12,49 +15,114 @@ import re
 import subprocess
 import sys
 import sysconfig
-import tempfile
 import time
+from typing import TYPE_CHECKING, Protocol
 from urllib.parse import unquote, urlsplit
 
+if TYPE_CHECKING:
+    from scripts.module_inventory import ModuleSpec
+
+
+# A callable protocol intentionally has one operation matching subprocess.run.
+class RegressionRunner(Protocol):  # pylint: disable=too-few-public-methods
+    """Injectable subprocess runner used by checker failure regressions."""
+
+    def __call__(self, command: list[str], *, cwd: Path, check: bool) -> object:
+        """Run the requested regression process or raise its execution failure."""
+
+
+if sys.version_info < (3, 12):
+    sys.exit(
+        "Python 3.12+ required; select PYTHON=python3.12 "
+        "or provision .cache/python-quality"
+    )
+
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location("module_checks", ROOT / "scripts/module_checks.py")
+SPEC = importlib.util.spec_from_file_location(
+    "module_checks", ROOT / "scripts/module_checks.py"
+)
+if SPEC is None or SPEC.loader is None:
+    raise ImportError("cannot load SDK module checks")
 MODULE_CHECKS = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE_CHECKS)
-STYLE_SPEC = importlib.util.spec_from_file_location("style_checks", ROOT / "scripts/style_checks.py")
+STYLE_SPEC = importlib.util.spec_from_file_location(
+    "style_checks", ROOT / "scripts/style_checks.py"
+)
+if STYLE_SPEC is None or STYLE_SPEC.loader is None:
+    raise ImportError("cannot load SDK style checks")
 STYLE_CHECKS = importlib.util.module_from_spec(STYLE_SPEC)
 STYLE_SPEC.loader.exec_module(STYLE_CHECKS)
+PYTHON_SPEC = importlib.util.spec_from_file_location(
+    "python_quality", ROOT / "scripts/python_quality.py"
+)
+if PYTHON_SPEC is None or PYTHON_SPEC.loader is None:
+    raise ImportError("cannot load SDK Python quality checks")
+PYTHON_QUALITY = importlib.util.module_from_spec(PYTHON_SPEC)
+PYTHON_SPEC.loader.exec_module(PYTHON_QUALITY)
 IGNORED = {".git", ".cache", "__pycache__"}
 REQUIRED = (
-    "README.md", "LICENSE", "AGENTS.md", "CONTRIBUTING.md", "Makefile", "sdk.json", ".golangci.yml",
-    "modules/README.md", "docs/README.md", "docs/SDK_CONVENTIONS.md",
-    "docs/API_DESIGN.md", "docs/COMPATIBILITY.md", "docs/VALIDATION.md",
-    "docs/LICENSING.md", "docs/EXTRACTION_GUIDE.md",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "Makefile",
+    "sdk.json",
+    ".golangci.yml",
+    "modules/README.md",
+    "docs/README.md",
+    "docs/SDK_CONVENTIONS.md",
+    "docs/API_DESIGN.md",
+    "docs/COMPATIBILITY.md",
+    "docs/VALIDATION.md",
+    "docs/LICENSING.md",
+    "docs/EXTRACTION_GUIDE.md",
     ".opencode/skill/berad-sdk-development/SKILL.md",
+    "pyproject.toml",
+    "requirements-quality.in",
+    "requirements-quality.lock",
+    ".githooks/pre-commit",
 )
 LINK = re.compile(r"\[[^\]\n]*\]\(([^)\n]+)\)")
 FENCE = re.compile(r"^```[^\n]*\n.*?^```\s*$", re.MULTILINE | re.DOTALL)
 
 
-def opencode_output(relative):
+def opencode_output(relative: Path) -> bool:
     """OpenCode bootstraps these local dependencies when discovering public skills."""
     parts = relative.parts
-    return (len(parts) >= 2 and parts[:2] == (".opencode", "node_modules") or
-            relative.as_posix() in {".opencode/package.json", ".opencode/package-lock.json",
-                                    ".opencode/bun.lock", ".opencode/.gitignore"})
+    return (
+        len(parts) >= 2
+        and parts[:2] == (".opencode", "node_modules")
+        or relative.as_posix()
+        in {
+            ".opencode/package.json",
+            ".opencode/package-lock.json",
+            ".opencode/bun.lock",
+            ".opencode/.gitignore",
+        }
+    )
 
 
-def files(root):
-    result = []
+def files(root: Path) -> list[Path]:
+    """Enumerate authored repository inputs and reject borrowed symlink sources."""
+    result: list[Path] = []
     for current, directories, names in os.walk(root):
-        directories[:] = sorted(name for name in directories if name not in IGNORED and
-                                not opencode_output((Path(current) / name).relative_to(root)) and
-                                not MODULE_CHECKS.INVENTORY.tool_output((Path(current) / name).relative_to(root)))
+        directories[:] = sorted(
+            name
+            for name in directories
+            if name not in IGNORED
+            and not opencode_output((Path(current) / name).relative_to(root))
+            and not MODULE_CHECKS.INVENTORY.tool_output(
+                (Path(current) / name).relative_to(root)
+            )
+        )
         for name in directories + names:
             path = Path(current) / name
             if opencode_output(path.relative_to(root)):
                 continue
             if path.is_symlink():
-                raise ValueError(f"source symlink must be an explicit reviewed input: {path}")
+                raise ValueError(
+                    f"source symlink must be an explicit reviewed input: {path}"
+                )
         for name in sorted(names):
             path = Path(current) / name
             if opencode_output(path.relative_to(root)):
@@ -65,14 +133,24 @@ def files(root):
     return sorted(result)
 
 
-def contracts(root):
+def contracts(root: Path) -> list[ModuleSpec]:
+    """Verify module, documentation and public skill contracts on every invocation."""
     paths = files(root)
     for name in REQUIRED:
         if not (root / name).is_file():
             raise ValueError(f"missing required file: {name}")
     manifest = json.loads((root / "sdk.json").read_text())
     modules = MODULE_CHECKS.inventory(root, manifest, paths)
-    markdown = [path for path in paths if path.suffix == ".md"]
+    check_markdown(root, [path for path in paths if path.suffix == ".md"])
+    check_catalogs(root, modules)
+    check_skills(root)
+    if "MIT License" not in (root / "LICENSE").read_text():
+        raise ValueError("missing MIT license")
+    return modules
+
+
+def check_markdown(root: Path, markdown: list[Path]) -> None:
+    """Check public path privacy and every local Markdown target."""
     for path in markdown:
         text = path.read_text(encoding="utf-8")
         if re.search(r"(?:/Users/|/home/)[A-Za-z0-9_.-]+/", text):
@@ -83,7 +161,14 @@ def contracts(root):
                 continue
             target = (path.parent / unquote(parsed.path)).resolve()
             if not target.is_relative_to(root.resolve()) or not target.exists():
-                raise ValueError(f"broken or external local link: {path.relative_to(root)} -> {destination}")
+                raise ValueError(
+                    f"broken or external local link: {path.relative_to(root)} "
+                    f"-> {destination}"
+                )
+
+
+def check_catalogs(root: Path, modules: list[ModuleSpec]) -> None:
+    """Require exact-once document catalog ownership."""
     owners = [root] + [root / module["id"] for module in modules]
     for owner in owners:
         docs = owner / "docs"
@@ -94,28 +179,50 @@ def contracts(root):
         for path in docs.rglob("*.md"):
             relative = path.relative_to(docs).as_posix()
             if destinations.count(relative) != 1:
-                raise ValueError(f"document must be cataloged exactly once: {path.relative_to(root)}")
-    names = set()
+                raise ValueError(
+                    f"document must be cataloged exactly once: {path.relative_to(root)}"
+                )
+
+
+def check_skills(root: Path) -> None:
+    """Check discoverable public skill identities and uniqueness."""
+    names: set[str] = set()
     for path in sorted((root / ".opencode/skill").rglob("SKILL.md")):
         text = path.read_text()
-        identity = re.match(r"---\nname: ([a-z0-9-]+)\ndescription: Use when [^\n]+\n---\n", text)
+        identity = re.match(
+            r"---\nname: ([a-z0-9-]+)\ndescription: Use when [^\n]+\n---\n", text
+        )
         if identity is None or identity[1] != path.parent.name:
-            raise ValueError(f"invalid public SDK skill identity/description: {path.relative_to(root)}")
+            raise ValueError(
+                "invalid public SDK skill identity/description: "
+                f"{path.relative_to(root)}"
+            )
         if identity[1] in names:
             raise ValueError(f"duplicate public SDK skill: {identity[1]}")
         names.add(identity[1])
     if "berad-sdk-development" not in names:
         raise ValueError("public SDK foundation skill missing")
-    if "MIT License" not in (root / "LICENSE").read_text():
-        raise ValueError("missing MIT license")
-    return modules
 
 
-def fingerprint(root):
+def fingerprint(root: Path) -> str:
     """Bind regression inputs, interpreter/runtime sources, and execution context."""
     hasher = hashlib.sha256()
-    paths = [p for p in files(root) if p.relative_to(root).parts[0] in {"scripts", "tests"}
-             or p.relative_to(root).as_posix() in {"sdk.json", "Makefile", ".golangci.yml"}]
+    paths = [
+        p
+        for p in files(root)
+        if p.relative_to(root).parts[0] in {"scripts", "tests"}
+        or p.suffix == ".py"
+        or p.relative_to(root).as_posix()
+        in {
+            "sdk.json",
+            "Makefile",
+            ".golangci.yml",
+            "pyproject.toml",
+            "requirements-quality.in",
+            "requirements-quality.lock",
+            ".githooks/pre-commit",
+        }
+    ]
     for path in paths:
         hasher.update(str(path.relative_to(root)).encode())
         hasher.update(path.read_bytes())
@@ -124,71 +231,146 @@ def fingerprint(root):
     hasher.update(executable.read_bytes())
     stdlib = Path(sysconfig.get_path("stdlib"))
     for current, directories, names in os.walk(stdlib):
-        directories[:] = sorted(n for n in directories
-                                if n not in {"site-packages", "dist-packages", "__pycache__"})
+        directories[:] = sorted(
+            n
+            for n in directories
+            if n not in {"site-packages", "dist-packages", "__pycache__"}
+        )
         for name in sorted(names):
             if name.endswith((".py", ".so", ".pyd", ".dll")):
                 path = Path(current) / name
                 hasher.update(str(path).encode())
                 hasher.update(path.read_bytes())
-    environment = {k: v for k, v in os.environ.items()
-                   if k not in {"_", "PWD", "OLDPWD", "SHLVL"} and not k.startswith("OPENCODE_")}
-    hasher.update(json.dumps([sys.version, platform.platform(), environment], sort_keys=True).encode())
+    environment = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in {"_", "PWD", "OLDPWD", "SHLVL"} and not k.startswith("OPENCODE_")
+    }
+    hasher.update(
+        json.dumps(
+            [sys.version, platform.platform(), environment], sort_keys=True
+        ).encode()
+    )
     return hasher.hexdigest()
 
 
-def reusable(record, identity):
-    try:
-        return json.loads(record.read_text()) == {"schema": 1, "state": "passed", "identity": identity}
-    except (OSError, ValueError):
-        return False
+def reusable(record: Path, identity: str) -> bool:
+    """Require an exact, complete successful regression record."""
+    return MODULE_CHECKS.reusable(record, identity)
 
 
-def regression_fingerprint(root):
+def regression_fingerprint(root: Path) -> str:
     """Real formatter/linter failure probes additionally depend on their Go tools."""
     environment = MODULE_CHECKS.environment()
-    return hashlib.sha256((fingerprint(root) + MODULE_CHECKS.tools(root, environment) +
-                           STYLE_CHECKS.tool_identity(root, MODULE_CHECKS, environment)).encode()).hexdigest()
+    return hashlib.sha256(
+        (
+            fingerprint(root)
+            + MODULE_CHECKS.tools(root, environment)
+            + STYLE_CHECKS.tool_identity(root, MODULE_CHECKS, environment)
+            + PYTHON_QUALITY.tool_identity(root)
+        ).encode()
+    ).hexdigest()
 
 
-def regression_tests(root, cache, identity_function=regression_fingerprint, runner=subprocess.run):
+def regression_tests(
+    root: Path,
+    cache: Path,
+    identity_function: Callable[[Path], str] = regression_fingerprint,
+    runner: RegressionRunner = subprocess.run,
+) -> None:
+    """Run checker tests once per stable identity under an exclusive process lock."""
     cache.mkdir(parents=True, exist_ok=True)
     lock = cache / "running"
     try:
         lock.mkdir()
     except FileExistsError as error:
-        raise ValueError(f"validation already running; if interrupted, verify no runner remains before removing {lock}") from error
+        raise ValueError(
+            "validation already running; if interrupted, verify no runner "
+            f"remains before removing {lock}"
+        ) from error
     record = cache / "checker-tests.json"
     try:
-        before = identity_function(root)
+        try:
+            before = identity_function(root)
+        except BaseException:
+            record.unlink(missing_ok=True)
+            raise
         if reusable(record, before):
             print("checker-tests: REUSED (material inputs unchanged)")
             return
         record.unlink(missing_ok=True)
         print("checker-tests: RUN (no matching successful result)", flush=True)
-        runner([sys.executable, "-I", "-B", "-m", "unittest", "discover", "-s", "tests", "-v"],
-               cwd=root, check=True)
+        runner(
+            [
+                sys.executable,
+                "-I",
+                "-B",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "tests",
+                "-v",
+            ],
+            cwd=root,
+            check=True,
+        )
         if before != identity_function(root):
-            raise ValueError("regression inputs changed during execution; result is not reusable")
-        with tempfile.NamedTemporaryFile(mode="w", dir=cache, delete=False) as output:
-            json.dump({"schema": 1, "state": "passed", "identity": before}, output)
-            temporary = Path(output.name)
-        os.replace(temporary, record)
+            raise ValueError(
+                "regression inputs changed during execution; result is not reusable"
+            )
+        MODULE_CHECKS.write_success(record, before)
     finally:
         lock.rmdir()
 
 
-def main():
+# Explicit operation exits keep provisioning and validation routes disjoint.
+def main() -> int:  # pylint: disable=too-many-return-statements
+    """Route explicit setup, focused checks and final registered validation."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("plan", "validate", "quality-gate", "provision", "tools",
-                                            "format", "format-check", "lint", "lint-fix", "lint-config-check",
-                                            "tooling-test"))
-    parser.add_argument("--module", action="append", default=[], help="registered identity, e.g. modules/berad-audio")
+    parser.add_argument(
+        "operation",
+        choices=(
+            "plan",
+            "validate",
+            "quality-gate",
+            "provision",
+            "tools",
+            "format",
+            "format-check",
+            "lint",
+            "lint-fix",
+            "lint-config-check",
+            "tooling-test",
+            *(
+                operation
+                for operation in PYTHON_QUALITY.OPERATIONS
+                if operation.startswith("python-")
+            ),
+        ),
+    )
+    parser.add_argument(
+        "--module",
+        action="append",
+        default=[],
+        help="registered identity, e.g. modules/berad-audio",
+    )
     args = parser.parse_args()
     start = time.monotonic()
     try:
+        if args.operation.startswith("python-"):
+            if args.operation == "python-tools":
+                PYTHON_QUALITY.provision(ROOT)
+            elif args.operation == "python-identity":
+                print(PYTHON_QUALITY.fingerprint(ROOT))
+            else:
+                PYTHON_QUALITY.validate(ROOT, args.operation)
+            return 0
         modules = contracts(ROOT)
-        print("contracts: PASS (cheap manifest, inventory, links, catalog, skill and source-path checks)")
+        print(
+            "contracts: PASS (cheap manifest, inventory, links, catalog, "
+            "skill and source-path checks)"
+        )
         MODULE_CHECKS.INVENTORY.selected_jobs(modules, args.module)
         if args.operation == "tooling-test":
             regression_tests(ROOT, ROOT / ".cache/validation")
@@ -196,28 +378,73 @@ def main():
         if args.operation == "tools":
             STYLE_CHECKS.provision(ROOT, MODULE_CHECKS)
             return 0
-        if args.operation in ("format", "format-check", "lint", "lint-fix", "lint-config-check"):
-            STYLE_CHECKS.validate(ROOT, modules, MODULE_CHECKS, lambda: fingerprint(ROOT),
-                                  operation=args.operation, selectors=args.module)
+        if args.operation in (
+            "format",
+            "format-check",
+            "lint",
+            "lint-fix",
+            "lint-config-check",
+        ):
+            STYLE_CHECKS.validate(
+                ROOT,
+                modules,
+                MODULE_CHECKS,
+                lambda: fingerprint(ROOT),
+                operation=args.operation,
+                selectors=args.module,
+            )
             return 0
         if args.operation == "provision":
             MODULE_CHECKS.provision(ROOT, modules, args.module)
             return 0
         cache = ROOT / ".cache/validation"
         if args.operation == "plan":
-            STYLE_CHECKS.validate(ROOT, modules, MODULE_CHECKS, lambda: fingerprint(ROOT),
-                                  selectors=args.module, plan=True)
-            action = "REUSE" if reusable(cache / "checker-tests.json", regression_fingerprint(ROOT)) else "RUN"
-            print(f"checker-tests: {action} (matching material-input evidence required)")
-            MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT), plan=True, selectors=args.module)
+            PYTHON_QUALITY.validate(ROOT, plan=True)
+            STYLE_CHECKS.validate(
+                ROOT,
+                modules,
+                MODULE_CHECKS,
+                lambda: fingerprint(ROOT),
+                selectors=args.module,
+                plan=True,
+            )
+            action = (
+                "REUSE"
+                if reusable(cache / "checker-tests.json", regression_fingerprint(ROOT))
+                else "RUN"
+            )
+            print(
+                f"checker-tests: {action} (matching material-input evidence required)"
+            )
+            MODULE_CHECKS.validate(
+                ROOT,
+                modules,
+                lambda: fingerprint(ROOT),
+                plan=True,
+                selectors=args.module,
+            )
             if not modules:
-                print("runtime/native/consumer suites: NOT REGISTERED (foundation stage)")
+                print(
+                    "runtime/native/consumer suites: NOT REGISTERED (foundation stage)"
+                )
         else:
-            STYLE_CHECKS.validate(ROOT, modules, MODULE_CHECKS, lambda: fingerprint(ROOT), selectors=args.module)
+            PYTHON_QUALITY.validate(ROOT)
+            STYLE_CHECKS.validate(
+                ROOT,
+                modules,
+                MODULE_CHECKS,
+                lambda: fingerprint(ROOT),
+                selectors=args.module,
+            )
             regression_tests(ROOT, cache)
-            MODULE_CHECKS.validate(ROOT, modules, lambda: fingerprint(ROOT), selectors=args.module)
+            MODULE_CHECKS.validate(
+                ROOT, modules, lambda: fingerprint(ROOT), selectors=args.module
+            )
             scope = ",".join(args.module) or "all registered modules"
-            print(f"SDK {args.operation}: PASS ({scope}); elapsed={time.monotonic() - start:.2f}s")
+            print(
+                f"SDK {args.operation}: PASS ({scope}); "
+                f"elapsed={time.monotonic() - start:.2f}s"
+            )
         return 0
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(f"Foundation check failed: {error}", file=sys.stderr)
