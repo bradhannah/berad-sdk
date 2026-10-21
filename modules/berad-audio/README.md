@@ -8,7 +8,7 @@ import audio "github.com/bradhannah/berad-sdk/modules/berad-audio"
 import "github.com/bradhannah/berad-sdk/modules/berad-audio/backend/ebitengine"
 ```
 
-Development source is on `feat/berad-audio`; there is no stable or tagged release.
+Development happens on `main`; there is no stable release.
 Use a reviewed published commit at the SDK path. Redux's dependency/import cutover
 follows an available SDK revision; no application-local replacement is required.
 Ambient and finite music transports, source analysis and document editing/persistence
@@ -201,7 +201,8 @@ and existing-path eligibility. These are trusted local-project filesystem rules,
 not a symlink-proof sandbox. `RuntimeLibrary` requires an explicit encoded-byte
 budget and freezes a playback-only projection without interpreting routing.
 
-`LibraryDocument` preserves schema-3 recording/cue/provenance/taxonomy fields.
+Schema 3 is the manifest format Ultima V Redux uses, and its routing group set is
+fixed. `LibraryDocument` preserves schema-3 recording/cue/provenance/taxonomy fields.
 `Routing.Groups` retains the schema-3 wire keys music/dungeon/naval without
 interpreting them as game policy. Consumer descriptors supply their labels,
 arbitrary target identities and any default target used for inheritance. Missing
@@ -333,7 +334,7 @@ From the SDK checkout, use `python3 -I -B scripts/check.py plan`, then
 dependencies before these offline checks. The checker isolates the module from
 other checkouts, rejects game imports/replacements and verifies package completion
 and zero skipped tests. The consumer's one local replacement exists only inside
-that isolated proof. See the [repository validation policy](https://github.com/bradhannah/berad-sdk/blob/feat/berad-audio/docs/VALIDATION.md).
+that isolated proof. See the [repository validation policy](../../docs/VALIDATION.md).
 
 Game-owned bridge tests remain in Redux and are distinct from independent SDK
 acceptance. Controlled transports and generated PCM/WAV tests are not native

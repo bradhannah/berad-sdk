@@ -9,32 +9,20 @@ assets retain their own terms; see [licensing](docs/LICENSING.md).
 
 ## Current availability
 
-Engineering contracts, conversion guidance, templates and an OpenCode skill are
-available. **Berad Audio** provides experimental runtime/authoring and separately
-versioned terminal-editor/catalog/probe tools, with explicit module/consumer checks
-on `main`. Consumers
-must pin a remotely available reviewed revision; there are no stable SDK version
-releases. **Berad Text** is also available on `main`,
-with supplied fonts, styled layout/local geometry and native-render consumer
-checks. **Berad Graphics** is available on `main`,
-with supplied images, procedural effects, masks and explicit Ebitengine resource
-ownership. Pin only actually available reviewed revisions.
-**Berad RNG** and **Berad Input** are candidate modules for exact deterministic
-stream continuation and supplied-state keyboard mechanisms. Their consumers own
-seed/command policy, clocks, native device sampling and future pointer routing.
-Standalone version-qualified tools installation awaits reviewed default-branch
-availability or a separately authorized module tag; pinned Redux game/editor
-installation is verified independently. Neither is native listening acceptance.
-See the [module catalog](modules/README.md).
-For the text demonstration, use `make build-text-demo`, `make text-demo`, or
-`make text-demo-smoke`. The smoke target uses an isolated HOME/working directory,
-an eight-second native startup window, and controlled process cleanup. It requires
-a desktop backend and is separate from physical keyboard/mouse/IME acceptance.
-The [tool catalog](tools/README.md) describes the separately versioned tools layout.
-Use `make graphics-check`, `make graphics-demo`, and `make graphics-demo-smoke`
-for graphics and its synthetic independent atelier example.
-Use `make rng-check` and `make input-check` for the engine-free algorithm and
-independent consumer checks; these modules have no desktop/device prerequisite.
+Every module is experimental (v0) and used by Ultima V Redux. There are no stable
+releases: APIs can change between revisions, so pin a reviewed revision.
+
+| Module | Provides | Checks |
+| --- | --- | --- |
+| [Berad Audio](modules/berad-audio/README.md) and [its tools](tools/README.md) | Cues, voices, music, ambience, authoring; terminal editor, catalog and probe | `make audio-runtime-check`, `make audio-tools-check` |
+| [Berad Text](modules/berad-text/README.md) | Supplied fonts, styled layout and caret geometry, bounded rendering | `make text-check` |
+| [Berad Graphics](modules/berad-graphics/README.md) | Supplied pixels, procedural effects, masks, Ebitengine resource ownership | `make graphics-check` |
+| [Berad RNG](modules/berad-rng/README.md) | Deterministic random streams with exact checkpoint restoration | `make rng-check` |
+| [Berad Input](modules/berad-input/README.md) | Supplied keyboard state, bindings, repeat and release protection | `make input-check` |
+
+Consumers own game policy: seeds, clocks, device sampling and media catalogs. Native
+demo and smoke targets need a desktop backend. See the
+[module catalog](modules/README.md) and the [tool catalog](tools/README.md).
 
 ## Converting an existing subsystem?
 
