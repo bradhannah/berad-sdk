@@ -11,12 +11,14 @@ a PR for human review. Describe affected contracts, consumers, licensing, select
 validation, reused results, and any explicit limitations. Private orchestration
 is not a contributor prerequisite.
 
-Validation requires Python 3.10+, the registered Go toolchain/dependencies and
-the pinned formatter/linter. Provision tools explicitly with `make tools` and
+Validation requires Python 3.12+, the registered Go toolchain/dependencies and
+the pinned formatters/linters. Provision Python tools explicitly with
+`make python-tools PYTHON_BOOTSTRAP=python3.12`, Go tools with `make tools` and
 dependencies with `make provision`, then use the offline Make targets:
 
 ```sh
 make plan
+make python-check
 make format-check
 make lint
 make quality-gate
@@ -28,6 +30,11 @@ findings; no changed-line baseline hides inherited debt. Begin cleanup with a
 reviewed `make lint-fix MODULE=...` pass, then address remaining findings manually.
 Checks run locally without downloads; provision dependencies separately.
 No hosted CI workflow is configured by this foundation.
+Python checks cover all authored source and tests with meaningful type annotations,
+Black's stable 88-column style and zero enabled Pylint findings. The Python-only
+targets need no Go/native tooling. Final gates include Python once even for a
+selected module. Optional native pre-commit installation is documented in
+[linting](docs/LINTING.md#optional-native-pre-commit-hook); preserve existing hooks.
 
 Contributed project-authored code and documentation use the repository's
 [MIT license](LICENSE). Preserve existing notices and identify third-party terms.

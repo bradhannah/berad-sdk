@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Bounded startup of the built text demo; not physical interaction acceptance."""
 
+from __future__ import annotations
+
+from collections.abc import Sequence
 import json
 import os
 from pathlib import Path
@@ -8,17 +11,40 @@ import subprocess
 import sys
 import tempfile
 import time
+from typing import TypedDict
+
+
+class StartupResult(TypedDict):
+    """Observed startup duration and controlled process cleanup, not device proof."""
+
+    startup: str
+    required_seconds: float
+    elapsed_seconds: float
+    controlled_stop_exit: int | None
+    acceptance: str
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def startup(command, cwd, environment, seconds=8):
+def startup(
+    command: Sequence[str],
+    cwd: str | Path,
+    environment: dict[str, str],
+    seconds: float = 8,
+) -> StartupResult:
     """Reject early exits, then terminate/reap this known single-process demo."""
     started = time.monotonic()
     with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
-        child = subprocess.Popen(command, cwd=cwd, env=environment,
-                                 stdin=subprocess.DEVNULL, stdout=output,
-                                 stderr=subprocess.STDOUT)
+        # Bounded finally cleanup replaces Popen's unbounded context-manager wait.
+        child = subprocess.Popen(  # pylint: disable=consider-using-with
+            command,
+            cwd=cwd,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+        )
         try:
             try:
                 code = child.wait(timeout=seconds)
@@ -26,7 +52,10 @@ def startup(command, cwd, environment, seconds=8):
                 pass
             else:
                 output.seek(0)
-                raise RuntimeError(f"demo exited before startup window: exit={code}; " + output.read(4096))
+                raise RuntimeError(
+                    f"demo exited before startup window: exit={code}; "
+                    + output.read(4096)
+                )
         finally:
             if child.poll() is None:
                 child.terminate()
@@ -35,13 +64,19 @@ def startup(command, cwd, environment, seconds=8):
                 except subprocess.TimeoutExpired:
                     child.kill()
                     child.wait(timeout=5)
-        return {"startup": "survived", "required_seconds": seconds,
-                "elapsed_seconds": round(time.monotonic() - started, 3),
-                "controlled_stop_exit": child.returncode,
-                "acceptance": "bounded native startup only; not keyboard/mouse/IME acceptance"}
+        return {
+            "startup": "survived",
+            "required_seconds": seconds,
+            "elapsed_seconds": round(time.monotonic() - started, 3),
+            "controlled_stop_exit": child.returncode,
+            "acceptance": (
+                "bounded native startup only; not keyboard/mouse/IME acceptance"
+            ),
+        }
 
 
-def main():
+def main() -> None:
+    """Start the explicitly built demo in an isolated temporary HOME."""
     kind = sys.argv[1] if len(sys.argv) == 2 else "text"
     if kind not in ("text", "graphics") or len(sys.argv) > 2:
         raise ValueError("select text or graphics demo")
@@ -49,7 +84,9 @@ def main():
     executable = ROOT / ".cache/bin" / (name + ".exe" if os.name == "nt" else name)
     if not executable.is_file():
         raise RuntimeError("build the demo with make build-" + kind + "-demo first")
-    with tempfile.TemporaryDirectory(prefix="text-demo-smoke-", dir=ROOT / ".cache") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="text-demo-smoke-", dir=ROOT / ".cache"
+    ) as directory:
         environment = dict(os.environ, HOME=directory, USERPROFILE=directory)
         result = startup([str(executable)], directory, environment)
         print(json.dumps(result, sort_keys=True))

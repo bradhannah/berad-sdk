@@ -1,0 +1,13 @@
+#!/bin/sh
+# Opt-in, check-only. Installation and composition with existing hooks are manual.
+set -eu
+root=$(git rev-parse --show-toplevel)
+python="$root/.cache/python-quality/bin/python"
+if [ ! -x "$python" ]; then
+    python="$root/.cache/python-quality/Scripts/python.exe"
+fi
+if [ ! -x "$python" ]; then
+    printf '%s\n' 'Provision Python 3.12+ quality tools with make python-tools first.' >&2
+    exit 1
+fi
+exec "$python" -I -B "$root/scripts/python_quality.py" pre-commit

@@ -1,10 +1,18 @@
-PYTHON ?= python3
+PYTHON ?= $(if $(wildcard .cache/python-quality/bin/python),.cache/python-quality/bin/python,$(if $(wildcard .cache/python-quality/Scripts/python.exe),.cache/python-quality/Scripts/python.exe,python3))
 GO ?= go
+PYTHON_BOOTSTRAP ?= $(PYTHON)
 MODULE ?=
 SELECT_MODULE = $(if $(MODULE),--module $(MODULE),)
 TEXT_DEMO_BIN = .cache/bin/berad-text-demo$(if $(filter Windows_NT,$(OS)),.exe,)
 GRAPHICS_DEMO_BIN = .cache/bin/berad-graphics-demo$(if $(filter Windows_NT,$(OS)),.exe,)
 .DEFAULT_GOAL := plan
+
+.PHONY: python-tools python-format python-format-check python-lint python-check
+python-tools:
+	$(PYTHON_BOOTSTRAP) -I -B scripts/python_quality.py $@
+
+python-format python-format-check python-lint python-check:
+	$(PYTHON) -I -B scripts/python_quality.py $@
 
 .PHONY: plan validate quality-gate provision audio-runtime-check audio-tools-check audio-tools clean
 .PHONY: text-check build-text-demo text-demo text-demo-smoke

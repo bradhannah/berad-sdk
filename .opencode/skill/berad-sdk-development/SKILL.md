@@ -70,9 +70,15 @@ consumer timing or move command, native-text, widget or pointer routing into it.
 
 ## Registered validation commands
 
-From the SDK checkout, use `python3 -I -B scripts/check.py plan`, then `validate`
-or `quality-gate`. Read `sdk.json` and the validation contract for actual registered
+From the SDK checkout, use `make plan`, then `make validate` or `make quality-gate`.
+Read `sdk.json` and the validation contract for actual registered
 coverage and reuse. Add required module checks before claiming onboarding acceptance.
+The interpreter must be Python 3.12+. Use `make plan` after explicit
+`make python-tools PYTHON_BOOTSTRAP=python3.12` provisioning: Make selects the local tool
+environment. Follow the [Python policy](../../../docs/LINTING.md#sdk-python-001--repository-wide-python-policy)
+for repository-wide Black/Pylint, meaningful annotations including tests, offline
+Python-only checks and opt-in hook composition. Both final gates include Python
+once even with a module selector.
 
 Consumer-specific workflows may add their own repository coordination and evidence
 requirements. This skill does not grant publication, filesystem, or remote-state

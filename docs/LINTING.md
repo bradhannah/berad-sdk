@@ -1,4 +1,4 @@
-# Strict Go formatting and lint
+# Strict Go and Python formatting and lint
 
 ## SDK-STYLE-001 — Complete enforcement
 
@@ -81,3 +81,89 @@ stream/publication contracts. Errors gain contextual wrapping while preserving
 causes; IO adapters retain required exact sentinels. The catalog exporter now
 reports unexpected protected-input inspection failures before writing either
 report. The standalone probe releases its signal context before process exit.
+
+## SDK-PYTHON-001 — Repository-wide Python policy
+
+All authored Python, including tests and nonignored new `.py` files, requires
+**Python 3.12+**, meaningful argument/return and collection annotations, explicit
+JSON/schema shapes and typed callbacks where relevant. Dynamic module loaders
+validate the spec/loader. Do not replace useful types with widespread `Any`.
+Runtime utilities use only the standard library; development tooling lives in
+the ignored repository-local `.cache/python-quality` virtual environment.
+
+The only Python quality tools are **Black 26.10.1** and **Pylint 4.0.4**.
+`pyproject.toml` selects Black's stable style, 88 columns and Python 3.12 syntax;
+preview/unstable style is off. Pylint loads `pylint.extensions.typing`, retains
+its default diagnostics, uses `score = false` and effective `exit-zero = false`, and must
+report **zero enabled findings**. No Mypy gate or pytest migration is involved.
+`mypy-extensions` is only a transitive Black dependency. Suppress a named diagnostic
+only at the smallest useful scope with an adjacent explanation. Tests may omit
+duplicative method docstrings when their names state the behavior; they still
+receive formatting, annotations and all other enabled lint checks.
+Pylint 4.0.4 implements `exit-zero` as a flag: placing even `false` in TOML
+enables it. The repository therefore deliberately omits that option and verifies
+its false default with a real failing fixture. Do not add `exit-zero` to the config.
+Pylint's three ignore lists are explicitly empty, so hidden Python filenames in
+the Git inventory are checked too. The helper requires an empty valid JSON
+diagnostic list and a zero process status: configuration diagnostics such as
+E0015 may otherwise accompany a misleading zero exit status.
+
+### Provisioning and independent checks
+
+```sh
+make python-tools PYTHON_BOOTSTRAP=python3.12
+make python-format
+make python-format-check
+make python-lint
+make python-check
+```
+
+`requirements-quality.in` owns the direct exact pins;
+`requirements-quality.lock` pins the complete universal dependency closure with
+hashes, including Windows markers. The explicit `python-tools` operation creates
+the venv and runs `pip install --require-hashes -r requirements-quality.lock`.
+It is the only Python operation allowed to install packages or use the network.
+Provisioning rejects symlinked cache/environment directories and any existing
+environment rather than overwriting it. Remove an old environment deliberately
+before reprovisioning. `PYTHON_BOOTSTRAP` selects the setup interpreter separately
+from checks; it defaults to `PYTHON` for compatibility with existing callers.
+Refresh the lock deliberately using
+`uv pip compile --python-version 3.12 --universal --generate-hashes --output-file requirements-quality.lock requirements-quality.in`;
+review every version/hash change. Ordinary checks never refresh or install tools.
+
+Make prefers the provisioned interpreter and otherwise uses `python3`; select a
+compatible bootstrap with `PYTHON_BOOTSTRAP=python3.12` when ambient Python is older. The
+checker fails clearly below 3.12. Standalone use is
+`.cache/python-quality/bin/python -I -B scripts/python_quality.py python-check`
+(Windows uses `.cache/python-quality/Scripts/python.exe`). The same `python-*`
+operations are available through `scripts/check.py`; `python-identity` prints the
+material-input digest. These routes do not probe Go, native devices or private
+repositories. `python-format` is the only formatting operation that edits source.
+
+The helper inventories tracked and nonignored new paths through Git, includes
+tests anywhere in the repository, prunes `.cache`/`__pycache__` directories and
+rejects source symlinks. `MODULE=...` never narrows this inventory. Both final gates
+include the Python formatting and lint lanes exactly once. Existing
+`.cache/validation` lane records bind source paths/bytes/modes, configuration,
+lock files, hook, interpreter/stdlib implementation and actual installed bytes of
+every pinned tool dependency and installed library files (including added imports
+and bytecode), plus material environment. Matching versions alone
+are insufficient. Failed probes/runs and changing inputs cannot leave reusable
+success. `plan` reads identities/results without creating caches or running tools.
+
+### Optional native pre-commit hook
+
+`.githooks/pre-commit` is a thin, check-only invocation of the public helper. It
+never formats, stages, installs dependencies or changes Git configuration. The
+hook requires the complete index to match the worktree (including nonignored new
+files), checks repository-wide Python, then verifies the index/worktree again.
+Partially staged candidates fail with a clear request to stage or set aside the
+remaining changes. It is a Python check, not a replacement for final SDK gates.
+
+Installation is opt-in. First inspect `git config --get core.hooksPath` and any
+existing `.git/hooks/pre-commit`. If a hook manager or existing hook is present,
+preserve it and compose an invocation of this repository's hook into that flow.
+Only when no existing hook configuration or hook would be displaced, install with
+`git config --local core.hooksPath .githooks`. Provision tools first. Replacing an
+existing hooks path without reviewing its hooks is not supported. No checks or
+provisioning commands automatically install this hook.

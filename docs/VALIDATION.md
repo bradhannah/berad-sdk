@@ -2,7 +2,9 @@
 
 ## Checker and registered-module coverage
 
-The checker requires Python 3.10+. Registered Go modules additionally need their
+The checker requires Python 3.12+. Provision Black 26.10.1 and Pylint 4.0.4 with
+`make python-tools PYTHON_BOOTSTRAP=python3.12` before offline checks. Make prefers this
+repository-local interpreter. Registered Go modules additionally need their
 declared toolchain, cached dependencies, and a C compiler for race instrumentation.
 Pinned goimports/golangci-lint executables are provisioned separately with
 `make tools`; see [strict linting](LINTING.md) for the complete source/test policy.
@@ -10,21 +12,24 @@ Original game data, a native audio device, private service, Node and network are
 not required. From the repository:
 
 ```sh
-python3 -I -B scripts/check.py plan
-python3 -I -B scripts/check.py validate
-python3 -I -B scripts/check.py quality-gate
+make plan
+make validate
+make quality-gate
 ```
 
-Make offers the same three targets. `validate` and `quality-gate` currently cover
+The equivalent CLI is `.cache/python-quality/bin/python -I -B scripts/check.py`
+with those operations (Windows uses `Scripts/python.exe`). `validate` and
+`quality-gate` currently cover
 the checker contracts and registered module lanes:
 
 | Check | Inputs and execution |
 | --- | --- |
 | contracts | Always runs the cheap manifest/module-inventory, required-file, Markdown link/catalog, skill, and source-path checks |
+| python-format-check / python-lint | Repository-wide Black and Pylint, including tests and nonignored new Python; runs once even with `--module`, reusing only matching content-bound results |
 | style config | Checks tool pins and schema; real ignored-error/type-assertion probes establish effective policy |
 | module format | Checks every authored Go file including tests and nested consumers; never formats silently |
 | module lint | Full unfiltered production/example/support-package lint, plus non-test consumer packages in isolation |
-| checker-tests | Runs checker regressions and real style-tool failure probes; reuse binds scripts/tests, Makefile, manifest, Python/Go toolchains, pinned style binaries and relevant environment |
+| checker-tests | Runs checker regressions and real Go/Python style-tool failure probes; reuse binds all Python, scripts/tests, Makefile, manifest, Python policy/lock/hook, Python/Go toolchains, actual Python dependencies, pinned style binaries and relevant environment |
 | module unit | Isolated dependency-closure check, zero-skip tests, vet and build; reusable per registered module |
 | module race | Separate race-instrumented module tests; does not repeat vet/build |
 | module consumer | Copied public-API consumer using only a validated temporary module substitution; vet, ordinary and race tests |
@@ -42,6 +47,12 @@ source, configuration and similarly named directories elsewhere remain checked.
 The SDK's offline checks do not require those OpenCode dependencies.
 
 `plan` reports intended work and does not execute tests or create cache files.
+`make python-format-check`, `make python-lint` and `make python-check` are focused,
+offline Python-only routes; they do not require Go or native tooling. The standalone
+`scripts/python_quality.py` helper and `scripts/check.py` expose the same operations.
+`python-format` is an explicit source-changing operation; `python-tools` is explicit
+network-enabled provisioning, neither is implicit in a check. See
+[Python policy and opt-in hook](LINTING.md#sdk-python-001--repository-wide-python-policy).
 Each final run reports executed/reused checks and elapsed time. Documentation edits
 do not invalidate checker regression evidence. Checker/test/configuration changes do.
 An unknown active module or Go source fails until its real validation is registered.
@@ -100,11 +111,12 @@ example `modules/berad-audio` or `tools/berad-audio`), its explicit check list, 
 readable. Paths, missing/duplicate identities, cycles and runtime-to-tools
 dependencies are rejected. Registration does not imply publication or native proof.
 
-`python3 -I -B scripts/check.py quality-gate --module modules/berad-audio` selects
+`make quality-gate MODULE=modules/berad-audio` selects
 that module's lanes and downstream **candidate** integration lanes. Select a tools
 identity for its published-pin and candidate lanes without rerunning upstream unit
 tests. Omit `--module` for aggregate acceptance. Make forwards `MODULE=...` to the
 same checker; unknown selections fail rather than running zero checks.
+Repository-wide Python checks still run once for every selected final gate.
 
 Published-pin lanes resolve normal Go dependencies. A module with `requires` also
 registers a `candidate` lane: isolated copies substitute the exact declared runtime
@@ -141,6 +153,13 @@ sources, runtime version/platform, and environment affecting execution. Validati
 uses isolated Python subprocesses. No freshness claim for native device observations
 or future modules follows from this cache. Cross-repository receipt integration is
 external orchestration and is not required to run these public checks.
+Python lanes use this same cache/lock machinery, binding their complete Git source
+inventory, `pyproject.toml`, both requirements files, hook and actual installed
+tool/dependency implementation bytes rather than version labels alone. Changed
+source/configuration/tools, failed identity probes and failed/interrupted runs
+invalidate relevant proof before execution. There is no separate Python receipt
+store. Pylint caches are disabled. Black's own formatting cache cannot substitute
+for the SDK's content identity or its check result.
 
 ## SDK-TEST-001 — Select affected checks
 
