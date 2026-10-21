@@ -118,4 +118,4 @@ runtime integration. Both use isolated consumers and reject game dependencies.
 All runtime/tool source also participates in the SDK's mandatory pinned formatting
 and full-source lint gates. Provision tools with `make tools` from the SDK root;
 `make lint MODULE=tools/berad-audio` selects this tool module explicitly.
-See the [SDK validation contract](https://github.com/bradhannah/berad-sdk/blob/feat/berad-audio/docs/VALIDATION.md).
+See the [SDK validation contract](../../docs/VALIDATION.md).
