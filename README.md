@@ -9,7 +9,8 @@ assets retain their own terms; see [licensing](docs/LICENSING.md).
 
 ## Current availability
 
-Every module is experimental (v0) and used by Ultima V Redux. There are no stable
+Every module is experimental (v0). Berad Path serves berad-engine; the others
+are used by Ultima V Redux. There are no stable
 releases: APIs can change between revisions, so pin a reviewed revision.
 
 | Module | Provides | Checks |
@@ -19,6 +20,7 @@ releases: APIs can change between revisions, so pin a reviewed revision.
 | [Berad Graphics](modules/berad-graphics/README.md) | Supplied pixels, procedural effects, masks, Ebitengine resource ownership | `make graphics-check` |
 | [Berad RNG](modules/berad-rng/README.md) | Deterministic random streams with exact checkpoint restoration | `make rng-check` |
 | [Berad Input](modules/berad-input/README.md) | Supplied keyboard state, bindings, repeat and release protection | `make input-check` |
+| [Berad Path](modules/berad-path/README.md) | Cheapest-route grid search with caller-supplied steps and costs | `make path-check` |
 
 Consumers own game policy: seeds, clocks, device sampling and media catalogs. Native
 demo and smoke targets need a desktop backend. See the

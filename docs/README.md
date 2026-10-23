@@ -34,7 +34,8 @@ System documentation is maintained with its implementation:
 skills route to these contracts; consumer integration guides own application policy.
 The [RNG catalog](../modules/berad-rng/docs/README.md) owns deterministic stream
 continuation; the [Input guide](../modules/berad-input/README.md) owns supplied-key
-observations, binding filtering and release/repeat mechanics.
+observations, binding filtering and release/repeat mechanics. The
+[Path catalog](../modules/berad-path/docs/README.md) owns route search.
 
 **MUST** is required. **SHOULD** is the default unless a reviewed reason justifies
 an exception. **MAY** is optional. Stable `SDK-*` identifiers refer to the specific

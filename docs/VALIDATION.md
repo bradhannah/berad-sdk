@@ -56,7 +56,7 @@ network-enabled provisioning, neither is implicit in a check. See
 Each final run reports executed/reused checks and elapsed time. Documentation edits
 do not invalidate checker regression evidence. Checker/test/configuration changes do.
 An unknown active module or Go source fails until its real validation is registered.
-The runtime inventory includes Berad Audio, Text, Graphics, RNG and Input. Audio transfers its
+The runtime inventory includes Berad Audio, Text, Graphics, RNG, Input and Path. Audio transfers its
 consumer API scenarios with the canonical import path changed. Redux bridge checks remain
 game-owned and are not dependencies of independent SDK validation.
 
@@ -77,11 +77,13 @@ cache eviction and explicit invalidation. `make graphics-demo-smoke` separately
 starts the atelier example for eight seconds; it is bounded startup evidence, not
 manual visual acceptance or validation of another game's assets.
 
-Berad RNG and Input use ordinary unit/race/independent-consumer lanes without
+Berad RNG, Input and Path use ordinary unit/race/independent-consumer lanes without
 Ebitengine or original-data dependencies. RNG verifies exact stream/jump vectors
 and mixed checkpoint continuation. Input verifies supplied observations, ordered
-filtering, consumption, transition/focus protection and explicit cadence. Their
-game save/input/native interaction checks remain consumer-owned.
+filtering, consumption, transition/focus protection and explicit cadence. Path
+verifies cheapest costs against an independent reference search, repeatable ties,
+bounds and visit limits. Their game save/input/movement and native interaction
+checks remain consumer-owned.
 
 Each module lane binds module files/modes, locks, checker policy, Python runtime,
 Go environment/toolchain implementation, compiler identity and lane selection.
