@@ -67,6 +67,10 @@ For Berad Input, read the [keyboard guide](../../../modules/berad-input/README.m
 Hosts supply key observations, clock values and binding priorities. Consumption,
 suppression, transition barriers and repeat owners are distinct; do not normalize
 consumer timing or move command, native-text, widget or pointer routing into it.
+For Berad Path, read the [module guide](../../../modules/berad-path/README.md) and
+[search contract](../../../modules/berad-path/docs/API.md). Hosts supply bounds,
+steps and step costs, including diagonal and occupancy rules; keep maps, units,
+wrapping and no-route behaviour in the consumer.
 
 ## Registered validation commands
 

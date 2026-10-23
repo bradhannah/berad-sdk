@@ -17,7 +17,7 @@ python-format python-format-check python-lint python-check:
 .PHONY: plan validate quality-gate provision audio-runtime-check audio-tools-check audio-tools clean
 .PHONY: text-check build-text-demo text-demo text-demo-smoke
 .PHONY: graphics-check
-.PHONY: rng-check input-check
+.PHONY: rng-check input-check path-check
 .PHONY: build-graphics-demo graphics-demo graphics-demo-smoke
 
 graphics-check:
@@ -28,6 +28,9 @@ rng-check:
 
 input-check:
 	$(MAKE) quality-gate MODULE=modules/berad-input
+
+path-check:
+	$(MAKE) quality-gate MODULE=modules/berad-path
 
 build-graphics-demo:
 	mkdir -p .cache/bin

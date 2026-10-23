@@ -4,6 +4,7 @@
   "modules": [
     {"id": "modules/berad-rng", "checks": ["unit", "race", "consumer"], "requires": []},
     {"id": "modules/berad-input", "checks": ["unit", "race", "consumer"], "requires": []},
+    {"id": "modules/berad-path", "checks": ["unit", "race", "consumer"], "requires": []},
     {"id": "modules/berad-audio", "checks": ["unit", "race", "consumer"], "requires": []},
     {"id": "modules/berad-text", "checks": ["unit", "race", "consumer"], "requires": [], "execution": "native-render"},
     {"id": "modules/berad-graphics", "checks": ["unit", "race", "consumer"], "requires": [], "execution": "native-render"},

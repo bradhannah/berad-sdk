@@ -9,6 +9,7 @@ The registered modules are:
 | --- | --- | --- |
 | [`berad-rng/`](berad-rng/README.md) | Explicit deterministic random streams and exact checkpoint restoration | Experimental; used by Ultima V Redux |
 | [`berad-input/`](berad-input/README.md) | Supplied keyboard observations, binding admission, repeat and release protection | Experimental, keyboard only; used by Ultima V Redux |
+| [`berad-path/`](berad-path/README.md) | Cheapest-route grid search with caller-supplied bounds, steps and costs | Experimental; for berad-engine's NPC walking |
 | [`berad-audio/`](berad-audio/README.md) | Cue/voice runtime, finite music, ambience and shared authoring | Experimental; used by Ultima V Redux and the audio tools |
 | [`berad-text/`](berad-text/README.md) | Supplied immutable fonts, styled layout, source-range/caret geometry and bounded Ebitengine rendering | Experimental; used by Ultima V Redux |
 | [`berad-graphics/`](berad-graphics/README.md) | Supplied pixels, procedural kernels, masks and bounded Ebitengine resources | Experimental; used by Ultima V Redux |
