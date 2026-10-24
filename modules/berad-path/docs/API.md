@@ -19,10 +19,15 @@ pluggable graph framework.
 `image.Point` and `image.Rectangle` from Go's standard library cross the API as
 plain values. No other types are exposed.
 
-Deliberately absent: map wrapping, cross-floor connections, arbitrary graphs,
-per-unit terrain tables, path smoothing, asynchronous jobs and route caching.
-The original implementation's wrapping served one game's world map; it returns
-when a consumer needs it, as an additive option.
+Deliberately absent: built-in map wrapping, cross-floor connections, arbitrary
+graphs, per-unit terrain tables, path smoothing, asynchronous jobs and route
+caching. A host whose map wraps searches a window no larger than the map in
+unwrapped coordinates: `Bounds` may extend past the map's edges, below zero
+included, the step cost wraps each cell before reading the map, and the host
+wraps the route's cells. The original implementation stored its world-map window
+wrapped but stepped without wrapping, so its routes could not cross the edge.
+Wrapped search of a whole map can arrive as an additive option when a consumer
+needs it.
 
 ## Operation semantics
 
@@ -82,7 +87,8 @@ behaviour.
 External tests cover the original implementation's route-around and no-route
 cases, cheapest cost and route validity against an independent Dijkstra search
 on 300 seeded random grids with weights, walls and negative origins in both step
-sets, a straight diagonal across negative coordinates, a step cost that charges
+sets, a straight diagonal across negative coordinates, a host-wrapped window
+routing across a map's edge, a step cost that charges
 diagonals more and refuses squeezes, repeatable equal-cost choices, searches
 seeing changed costs, the visit limit, bounds confining the step cost's calls,
 start equal to goal, every invalid query, and a step below the minimum. The

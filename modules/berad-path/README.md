@@ -53,7 +53,9 @@ layout; its fixture-only `../library` substitution is not an installation pin.
 - Cells are `image.Point` values in any coordinate range, negative included;
   the query's `Bounds` limit them. Steps are one cell: north, east, south and
   west, and with `Eight` also the diagonals. A diagonal rule, such as refusing
-  to squeeze between two blocked cells, belongs in the step cost.
+  to squeeze between two blocked cells, belongs in the step cost. So does map
+  wrapping: search a window in unwrapped coordinates, past the map's edge if
+  needed, and wrap each cell before reading the map.
 - `MinStep` is a lower bound on every allowed step's cost (zero means 1). The
   distance estimate is the least number of steps times `MinStep`, so routes are
   always cheapest; a step cheaper than `MinStep` is an error, not a wrong route.
@@ -86,7 +88,8 @@ From an SDK checkout, `make path-check` (or
 unit and race tests, and the isolated consumer. Tests include the original
 implementation's route-around and no-route cases, agreement with a plain
 Dijkstra reference on 300 random weighted grids in four and eight directions,
-negative coordinates, a step cost carrying diagonal rules, repeatable ties,
+negative coordinates, a host-wrapped window crossing a map's edge, a step cost
+carrying diagonal rules, repeatable ties,
 bounds, the visit limit, and invalid queries. These are CPU-only checks.
 
 ## License and documentation
