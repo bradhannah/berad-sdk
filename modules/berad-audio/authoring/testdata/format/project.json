@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "library": "library.json",
+  "assetRoot": "media",
+  "importDirectory": "imported",
+  "targets": {
+    "Tiles": [{"ID": "water", "Name": "Water", "Frames": [3, 4]}],
+    "Groups": {"music": {"Label": "Place", "Targets": {"fallback": "Anywhere", "quiet": "Quiet room"}, "DefaultTarget": "fallback", "Category": "music"}},
+    "Families": ["water", "wood"],
+    "CueCategories": {"panel/accept": "music", "door/open": "sfx"}
+  },
+  "calibration": {"Method": "active_rms", "TargetDB": -20},
+  "calibrationFamilies": {"water": {"Method": "gated_loudness", "TargetDB": -28}},
+  "sliderGains": [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
+  "recordingCategories": {"water": "ambient"},
+  "targetPolicies": {"music|quiet": {"Category": "music", "Spatial": false, "Background": false, "Title": "Quiet room", "Help": "No music here."}},
+  "ambientPreset": {"CuePrefix": "bed/", "Profile": "river", "Family": "water", "HowToHear": "Stand near it.", "Gain": 0.3},
+  "mixLabel": "PROJECT MIX",
+  "savedNotice": "Saved."
+}
