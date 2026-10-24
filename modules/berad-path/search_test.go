@@ -106,6 +106,28 @@ func TestNegativeCoordinates(t *testing.T) {
 	}
 }
 
+// A host whose map wraps searches a window in unwrapped coordinates and wraps
+// each cell in its step cost, so a route can cross the map's edge.
+func TestHostWrapsAWindowAcrossTheEdge(t *testing.T) {
+	t.Parallel()
+	const width = 8
+	world := newGrid(image.Pt(0, 0), "...#....", "...#....", "...#....")
+	wrap := func(cell image.Point) image.Point { return image.Pt((cell.X%width+width)%width, cell.Y) }
+	query := pathfind.Query{
+		Start: image.Pt(1, 1), Goal: image.Pt(6-width, 1), Bounds: image.Rect(-3, 0, 5, 3), Moves: pathfind.Four,
+		Cost:    func(from, to image.Point) (int, bool) { return world.cost(wrap(from), wrap(to)) },
+		MinStep: 0, MaxVisited: 0,
+	}
+	across := []image.Point{image.Pt(1, 1), image.Pt(0, 1), image.Pt(-1, 1), image.Pt(-2, 1)}
+	if result := find(t, query); result.Outcome != pathfind.Found || !slices.Equal(result.Route, across) {
+		t.Fatalf("the wall leaves only the way across the edge: %+v", result)
+	}
+	inside := world.query(image.Pt(1, 1), image.Pt(6, 1), pathfind.Four)
+	if result := find(t, inside); result.Outcome != pathfind.NoRoute {
+		t.Fatalf("without wrapping the wall blocks every route: %+v", result)
+	}
+}
+
 // A caller's step cost carries rules such as charging more for diagonals and
 // refusing to squeeze between two blocked cells.
 func TestStepCostCarriesTheRules(t *testing.T) {
