@@ -24,6 +24,12 @@ failure paths; stream/native playback retirement completes within the run operat
 validates without opening audio/UI or writing files. There is no implicit game
 manifest. The existing Bubble Tea workflows remain: recordings/moments, waveform,
 crop/duplicate/calibration, routing, temporary Soundscape, Save and Undo/Redo.
+The terminal editor is kept for its existing consumers; new audio editing is being
+built in berad-editor. Both read and write the same schema-3 libraries and
+version-1 descriptors through the authoring module, as its
+[maintenance rules](../../modules/berad-audio/docs/AUTHORING.md#maintaining-this-contract)
+require. `authoring.ReadProjectDescriptor` is the shared descriptor reader;
+`project.Open` moves onto it once a published runtime revision carries it.
 
 `cmd/audio-catalog` takes `-library`, optional manifest-relative `-asset-root`, and
 explicit `-output`/`-guide` destinations. `-measure` records sample peak and RMS,
