@@ -29,7 +29,7 @@ func (m *model) openSoundRecordingPicker() tea.Cmd {
 }
 
 func (m *model) openRecordingChoices(kind, target string) tea.Cmd {
-	menu := &routingMenu{ //nolint:exhaustruct // Fresh child picker retains its parent selection and filter.
+	menu := &routingMenu{ //nolint:exhaustruct_v5 // Fresh child picker retains its parent selection and filter.
 		kind: kind, title: "CHOOSE RECORDING", target: target, parent: m.routing.menu,
 	}
 	if kind == formRecordingPicker {
@@ -44,7 +44,7 @@ func (m *model) openRecordingChoices(kind, target string) tea.Cmd {
 }
 
 func (m *model) openSurfaceAddition() tea.Cmd {
-	menu := &routingMenu{ //nolint:exhaustruct // Fresh compatible picker.
+	menu := &routingMenu{ //nolint:exhaustruct_v5 // Fresh compatible picker.
 		kind: surfaceAddPicker, title: "ADD FOOTSTEP SOUND",
 	}
 	for _, cue := range m.doc.CueIDs() {

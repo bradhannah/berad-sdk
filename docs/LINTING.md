@@ -3,7 +3,7 @@
 ## SDK-STYLE-001 — Complete enforcement
 
 All registered runtime and tool modules use the repository's `.golangci.yml` and
-the pinned tools provisioned by `make tools`: golangci-lint **v2.12.2** and
+the pinned tools provisioned by `make tools`: golangci-lint **v2.15.0** and
 goimports from **golang.org/x/tools v0.37.0**. Tool build metadata and the linter's
 reported version must match; missing or substituted versions fail explicitly.
 The SDK owns these tools under ignored `.cache/tools`, independently of consumers.

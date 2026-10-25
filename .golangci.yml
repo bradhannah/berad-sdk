@@ -25,7 +25,7 @@ linters:
     - errname
     - errorlint
     - exhaustive
-    - exhaustruct
+    - exhaustruct_v5
     - exptostd
     - fatcontext
     - forbidigo
@@ -111,8 +111,8 @@ linters:
     presets: []
     rules:
       # Ebitengine draw options intentionally use optional zero-valued fields.
-      - linters: [exhaustruct]
-        text: "(ebiten\\.DrawImageOptions|text\\.DrawOptions) is missing fields"
+      - linters: [exhaustruct_v5]
+        text: "(ebiten\\.DrawImageOptions|text\\.DrawOptions) is missing fields?"
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

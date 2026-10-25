@@ -40,7 +40,7 @@ PINS: dict[str, tuple[str, str, str]] = {
     "golangci-lint": (
         "github.com/golangci/golangci-lint/v2",
         "github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
-        "v2.12.2",
+        "v2.15.0",
     ),
 }
 

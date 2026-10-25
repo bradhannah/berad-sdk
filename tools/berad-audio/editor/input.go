@@ -84,7 +84,7 @@ func (m *model) beginClassificationEdit() {
 		cue = m.activeCue()
 		value, options = m.doc.CueProfile(cue), m.doc.ClassificationProfiles()
 	}
-	m.form = &editorForm{ //nolint:exhaustruct // Choice draft applies explicitly.
+	m.form = &editorForm{ //nolint:exhaustruct_v5 // Choice draft applies explicitly.
 		kind: formClassification, title: "CLASSIFICATION", cue: cue, errorField: -1,
 		fields: []formField{{label: "Classification", value: value,
 			help: "Left/Right chooses an authored classification.", unit: "", step: 0, options: options}},

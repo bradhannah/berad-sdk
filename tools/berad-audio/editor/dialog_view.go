@@ -156,48 +156,17 @@ func (m *model) volumeDialog(width int) (editorDialog, bool) {
 		focus: m.volumeCursor, help: []string{"Up/Down: control   Left/Right: adjust   Escape: return"}}, true
 }
 
-//nolint:cyclop,nestif // Fields, inline errors and actions render in order so focus offsets stay aligned.
+// Fields, inline errors and actions render in order so focus offsets stay aligned.
 func (m *model) formDialog(width int) editorDialog {
 	form := m.form
 	rows := []string{m.colors.warning.Render("DRAFT · Apply updates the library; Ctrl+S saves the file."), ""}
-	focus := 0
-	if form.kind == formSurface {
-		rows = append(rows, "Ordered footsteps · shared by every tile using "+form.surface)
-		for index, cue := range form.sequence {
-			line := fmt.Sprintf("%d. %s", index+1, m.doc.Cue(cue).Name)
-			if index == form.cursor {
-				focus = len(rows)
-				line = m.colors.key.Render(fit("> "+line, width))
-			}
-			rows = append(rows, line)
-		}
-		if len(form.sequence) == 0 {
-			rows = append(rows, "Silent surface. a adds a footstep sound.")
-		}
-	} else {
-		if form.kind == formTileAmbient {
-			rows = append(rows, "Applies only to this tile family, including all its animation frames.",
-				"Other tile types can reuse the same sound with different distance/level.", "")
-		}
-		if form.kind == formAmbient {
-			rows = append(rows, "Shared sound settings: every source using this sound is affected.", "")
-		}
-		for index, field := range form.fields {
-			if index == form.cursor {
-				focus = len(rows)
-			}
-			rows = append(rows, m.formFieldLine(field, index == form.cursor, form.editing, width))
-			if index == form.cursor {
-				rows = append(rows, m.colors.dim.Render(fit(field.help, width)))
-			}
-			if index == form.errorField && form.errorText != "" {
-				rows = append(rows, m.colors.problem.Render("! "+safe(form.errorText)))
-			}
-		}
-	}
+	var focus int
 	fieldCount := len(form.fields)
 	if form.kind == formSurface {
+		rows, focus = m.surfaceFormRows(rows, width)
 		fieldCount = len(form.sequence)
+	} else {
+		rows, focus = m.fieldFormRows(rows, width)
 	}
 	for index, action := range []string{"Apply changes", hintCancel} {
 		line := "[ " + action + " ]"
@@ -213,6 +182,49 @@ func (m *model) formDialog(width int) editorDialog {
 	}
 
 	return editorDialog{title: form.title, rows: rows, focus: focus, help: m.hintRows(m.formKeyHints())}
+}
+
+func (m *model) surfaceFormRows(rows []string, width int) ([]string, int) {
+	form, focus := m.form, 0
+	rows = append(rows, "Ordered footsteps · shared by every tile using "+form.surface)
+	for index, cue := range form.sequence {
+		line := fmt.Sprintf("%d. %s", index+1, m.doc.Cue(cue).Name)
+		if index == form.cursor {
+			focus = len(rows)
+			line = m.colors.key.Render(fit("> "+line, width))
+		}
+		rows = append(rows, line)
+	}
+	if len(form.sequence) == 0 {
+		rows = append(rows, "Silent surface. a adds a footstep sound.")
+	}
+
+	return rows, focus
+}
+
+func (m *model) fieldFormRows(rows []string, width int) ([]string, int) {
+	form, focus := m.form, 0
+	if form.kind == formTileAmbient {
+		rows = append(rows, "Applies only to this tile family, including all its animation frames.",
+			"Other tile types can reuse the same sound with different distance/level.", "")
+	}
+	if form.kind == formAmbient {
+		rows = append(rows, "Shared sound settings: every source using this sound is affected.", "")
+	}
+	for index, field := range form.fields {
+		if index == form.cursor {
+			focus = len(rows)
+		}
+		rows = append(rows, m.formFieldLine(field, index == form.cursor, form.editing, width))
+		if index == form.cursor {
+			rows = append(rows, m.colors.dim.Render(fit(field.help, width)))
+		}
+		if index == form.errorField && form.errorText != "" {
+			rows = append(rows, m.colors.problem.Render("! "+safe(form.errorText)))
+		}
+	}
+
+	return rows, focus
 }
 
 func (m *model) formFieldLine(field formField, active, editing bool, width int) string {
