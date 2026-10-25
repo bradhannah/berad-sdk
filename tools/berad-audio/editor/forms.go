@@ -85,7 +85,7 @@ func (m *model) editSharedAmbientProfile() tea.Cmd {
 
 		return nil
 	}
-	m.form = &editorForm{ //nolint:exhaustruct // Fresh draft: no preview, input or validation state yet.
+	m.form = &editorForm{ //nolint:exhaustruct_v5 // Fresh draft: no preview, input or validation state yet.
 		kind: formAmbient, title: "SHARED SOUND DEFAULTS — " + m.doc.Cue(cue).Name,
 		cue: cue, fields: ambientFields(profile), errorField: -1, parentMenu: m.routing.menu,
 	}
@@ -107,7 +107,7 @@ func (m *model) openNewAmbientForm() tea.Cmd {
 	}...)
 	profile := audio.AmbientProfile{RadiusTiles: initialRadius, FadeInMs: initialFadeInMs, FadeOutMs: initialFadeOutMs}
 	fields = append(fields, ambientFields(profile)...)
-	m.form = &editorForm{ //nolint:exhaustruct // Draft is detached until Apply.
+	m.form = &editorForm{ //nolint:exhaustruct_v5 // Draft is detached until Apply.
 		kind: formNewAmbient, title: "NEW AMBIENT SOUND", fields: fields, errorField: -1, parentMenu: m.routing.menu,
 	}
 	m.routing.menu = nil
@@ -118,7 +118,7 @@ func (m *model) openNewAmbientForm() tea.Cmd {
 func (m *model) editSurfaceCues() tea.Cmd {
 	routing := m.doc.Routing()
 	surface := m.tileSurface(m.selectedID())
-	m.form = &editorForm{ //nolint:exhaustruct // Ordered draft is detached; Apply commits once.
+	m.form = &editorForm{ //nolint:exhaustruct_v5 // Ordered draft is detached; Apply commits once.
 		kind: formSurface, title: "FOOTSTEP SEQUENCE — " + surface, surface: surface,
 		sequence: append([]string(nil), routing.Surfaces[surface]...), errorField: -1,
 	}

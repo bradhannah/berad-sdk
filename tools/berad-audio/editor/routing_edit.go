@@ -16,7 +16,7 @@ func (m *model) openRoutingAssignment(kind string) tea.Cmd {
 	if m.selectedID() == "" {
 		return nil
 	}
-	menu := &routingMenu{ //nolint:exhaustruct // Picker starts at the first choice with no search.
+	menu := &routingMenu{ //nolint:exhaustruct_v5 // Picker starts at the first choice with no search.
 		kind: kind, title: "ASSIGN " + strings.ToUpper(kind), target: m.selectedID(),
 	}
 	if kind == "cue" {
@@ -270,7 +270,7 @@ func (m *model) openRoutingUsages() tea.Cmd {
 	if cues[0] == "" {
 		cues = m.doc.Usages(m.recordingID())
 	}
-	menu := &routingMenu{ //nolint:exhaustruct // Fresh read-only navigation list.
+	menu := &routingMenu{ //nolint:exhaustruct_v5 // Fresh read-only navigation list.
 		kind: "uses", title: "USED BY · configured assignments", target: m.selectedID(),
 	}
 	for _, cue := range cues {

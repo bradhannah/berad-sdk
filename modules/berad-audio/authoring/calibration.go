@@ -195,7 +195,7 @@ func (filter *biquad) sample(input float64) float64 {
 	return output
 }
 
-//nolint:mnd,exhaustruct // Published 44.1 kHz filter coefficients; delay elements start at zero.
+//nolint:mnd,exhaustruct_v5 // Published 44.1 kHz filter coefficients; delay elements start at zero.
 func kWeightingFilters() [2][2]biquad {
 	// BS.1770 K-weighting coefficients at 44.1 kHz (shelf then RLB high-pass).
 	shelf := biquad{b0: 1.53084123005035, b1: -2.65097999515473, b2: 1.16907907992159,

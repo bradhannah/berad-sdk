@@ -40,7 +40,7 @@ func (m *model) editTileAmbient() tea.Cmd {
 		levelMode = useTileOverride
 	}
 	defaultRadius := routing.Ambient[assignment.AmbientCue].RadiusTiles
-	m.form = &editorForm{ //nolint:exhaustruct // Detached per-family source draft.
+	m.form = &editorForm{ //nolint:exhaustruct_v5 // Detached per-family source draft.
 		kind: formTileAmbient, title: "TILE SOUND — " + m.audioTile(identity).Name,
 		cue: assignment.AmbientCue, tileID: identity, errorField: -1,
 		fields: []formField{
