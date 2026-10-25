@@ -14,18 +14,22 @@ import (
 // its writer last read. Read it again before changing it.
 var ErrProjectChangedOnDisk = fmt.Errorf("%w: project descriptor changed on disk; read it again", ErrLibrary)
 
-const cueCategoriesKey = "CueCategories"
+const (
+	cueCategoriesKey = "CueCategories"
+	categoryGainsKey = "categoryGainsDb"
+)
 
 // CreateProjectDescriptor writes a version-1 descriptor that names library,
-// relative to the descriptor's directory unless absolute, and nothing else.
-// The file appears complete or not at all, and an existing file is never
-// replaced.
+// relative to the descriptor's directory unless absolute, and nothing else:
+// the oldest version that holds it, so every editor reading version 1 can
+// open it until something needs version 2. The file appears complete or not
+// at all, and an existing file is never replaced.
 func CreateProjectDescriptor(path, library string) error {
 	if strings.TrimSpace(library) == "" {
 		return fmt.Errorf("%w: a project descriptor names its library", ErrLibrary)
 	}
 	data := fmt.Sprintf("{\n  \"schemaVersion\": %d,\n  \"library\": %s\n}\n",
-		ProjectDescriptorVersion, encodeAudioValue(library))
+		ProjectDescriptorVersionOne, encodeAudioValue(library))
 
 	return createFile(path, ".audio-project-*", []byte(data))
 }
@@ -53,7 +57,77 @@ func SetDescriptorCueCategory(path string, expected []byte, cueID, category stri
 	} else {
 		categories[cueID] = category
 	}
-	data := withCueCategories(expected, categories)
+
+	return writeDescriptor(path, expected, withCueCategories(expected, categories))
+}
+
+// SetDescriptorCategoryGain records the adjustment for a cue category, in
+// dB, in the descriptor at path, in categoryGainsDb, and returns the bytes it
+// wrote. Zero removes the category's entry. A version-1 descriptor becomes
+// version 2 when it gains its first category gain, and never goes back.
+// expected and the file are checked and replaced as SetDescriptorCueCategory
+// does; every other byte is kept.
+func SetDescriptorCategoryGain(path string, expected []byte, category string, gainDB float64) ([]byte, error) {
+	if !validCueCategory(category) || !finiteRange(gainDB, calibrationMinGain, calibrationMaxGain) {
+		return nil, fmt.Errorf("%w: a category gain needs a known category and [-48,12] dB", ErrLibrary)
+	}
+	descriptor, err := ParseProjectDescriptor(expected)
+	if err != nil {
+		return nil, err
+	}
+	gains := maps.Clone(descriptor.CategoryGainsDB)
+	if gains == nil {
+		gains = make(map[string]float64)
+	}
+	if gainDB == 0 {
+		delete(gains, category)
+	} else {
+		gains[category] = gainDB
+	}
+	data := expected
+	if len(gains) == 0 {
+		data = deleteObjectEntry(data, categoryGainsKey)
+	} else {
+		data = setObjectEntry(data, categoryGainsKey, func(prefix string) []byte { return indentedJSON(gains, prefix) })
+		if descriptor.SchemaVersion < ProjectDescriptorVersionTwo {
+			data = setObjectEntry(data, "schemaVersion", func(string) []byte {
+				return encodeAudioValue(ProjectDescriptorVersionTwo)
+			})
+		}
+	}
+
+	return writeDescriptor(path, expected, data)
+}
+
+// SetDescriptorCalibrationTarget sets the loudness, in dB, that measuring a
+// recording aims at when its acoustic family names no policy of its own: the
+// descriptor's calibration target. Its method stays, or is active RMS when the
+// descriptor names none. expected and the file are checked and replaced as
+// SetDescriptorCueCategory does; every other byte is kept.
+func SetDescriptorCalibrationTarget(path string, expected []byte, targetDB float64) ([]byte, error) {
+	if !finiteRange(targetDB, calibrationMinTarget, calibrationMaxTarget) {
+		return nil, fmt.Errorf("%w: a calibration target is in [-60,-6] dB", ErrLibrary)
+	}
+	descriptor, err := ParseProjectDescriptor(expected)
+	if err != nil {
+		return nil, err
+	}
+	policy := DefaultCalibrationOptions()
+	if descriptor.Calibration != nil {
+		policy.Method = descriptor.Calibration.Method
+	}
+	policy.TargetDB = targetDB
+	data := setObjectEntry(expected, "calibration", func(string) []byte {
+		return []byte(fmt.Sprintf(`{"Method": %s, "TargetDB": %s}`,
+			encodeAudioValue(string(policy.Method)), encodeAudioValue(policy.TargetDB)))
+	})
+
+	return writeDescriptor(path, expected, data)
+}
+
+// writeDescriptor checks the new bytes parse, then replaces the descriptor at
+// path with them, complete or not at all, only while it still holds expected.
+func writeDescriptor(path string, expected, data []byte) ([]byte, error) {
 	if _, err := ParseProjectDescriptor(data); err != nil {
 		return nil, err
 	}

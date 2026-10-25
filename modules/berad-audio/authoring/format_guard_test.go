@@ -1,6 +1,6 @@
 package authoring_test
 
-// The format guard keeps schema-3 and schema-4 libraries and version-1 project
+// The format guard keeps schema-3, 4 and 5 libraries and version-1 and 2 project
 // descriptors exactly as every editor and game reading them expects.
 // testdata/format holds one of each using every field. A change that renames,
 // retypes, adds or drops an encoded field fails here; it needs a new schema or
@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -110,10 +111,30 @@ func requireFixtureValues(t *testing.T, document authoring.LibraryDocument) {
 	require.Nil(t, quiet, "explicit silence stays distinct from a missing target")
 }
 
-func TestSchemaThreeAndFourAreTheOnlyLibraryVersions(t *testing.T) {
+func TestSchemaFiveFormatIsFrozen(t *testing.T) {
+	document := requireLibraryEncodes(t, readFormatFixture(t, "library5.json"))
+	requireFixtureValues(t, document)
+	require.InDelta(t, 2.5, document.Cues["bed/river"].VolumeModifier, 0, "schema 5 plays a cue louder than unity")
+	require.True(t, *document.Recordings["door_open_a"].Provenance.CommercialUse)
+}
+
+func TestLouderCuesBelongToSchemaFive(t *testing.T) {
+	early := bytes.Replace(readFormatFixture(t, "library5.json"), []byte(`"schemaVersion": 5`),
+		[]byte(`"schemaVersion": 4`), 1)
+	_, err := authoring.ParseDocument(early, nil)
+	require.ErrorIs(t, err, authoring.ErrLibrary, "schema 4 keeps a cue's gain at or below 1")
+	tooLoud := bytes.Replace(readFormatFixture(t, "library5.json"), []byte(`"volumeModifier": 2.5`),
+		[]byte(`"volumeModifier": 4`), 1)
+	_, err = authoring.ParseDocument(tooLoud, nil)
+	require.ErrorIs(t, err, authoring.ErrLibrary, "schema 5 stops at +12 dB")
+	require.InDelta(t, 1, authoring.MaxCueGain(authoring.LibrarySchemaFour), 0)
+	require.InDelta(t, 3.981, authoring.MaxCueGain(authoring.LibrarySchemaFive), 0.001)
+}
+
+func TestSchemaThreeFourAndFiveAreTheOnlyLibraryVersions(t *testing.T) {
 	for _, change := range []struct{ fixture, from, to string }{
 		{"library.json", `"schemaVersion": 3`, `"schemaVersion": 2`},
-		{"library4.json", `"schemaVersion": 4`, `"schemaVersion": 5`},
+		{"library5.json", `"schemaVersion": 5`, `"schemaVersion": 6`},
 	} {
 		data := bytes.Replace(readFormatFixture(t, change.fixture), []byte(change.from), []byte(change.to), 1)
 		_, err := authoring.ParseDocument(data, nil)
@@ -177,6 +198,43 @@ func TestUpgradeToSchemaFourChangesOnlyRecordingsAndVersion(t *testing.T) {
 	require.ErrorIs(t, err, authoring.ErrLibrary, "a library never moves back a schema")
 }
 
+func TestUpgradeToSchemaFiveChangesOnlyTheVersionFromFour(t *testing.T) {
+	path := copyFixture(t, "library4.json")
+	before := readFormatFixture(t, "library4.json")
+	editor := openFixture(t, path, authoring.LibrarySchemaFive)
+	require.Equal(t, authoring.LibrarySchemaFive, editor.SchemaVersion())
+	require.NoError(t, editor.SaveChanged())
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, string(bytes.Replace(before, []byte(`"schemaVersion": 4`), []byte(`"schemaVersion": 5`), 1)),
+		string(after), "every byte but the version is kept")
+}
+
+func TestUpgradeFromThreeToFiveTakesEveryStep(t *testing.T) {
+	path := copyFixture(t, "library.json")
+	editor := openFixture(t, path, authoring.LibrarySchemaFive)
+	require.NoError(t, editor.SaveChanged())
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	document, err := authoring.ParseDocument(after, nil)
+	require.NoError(t, err)
+	require.Equal(t, authoring.LibrarySchemaFive, document.SchemaVersion)
+	for id, recording := range document.Recordings {
+		require.NotNil(t, recording.Provenance.CommercialUse, id+" gained schema 4's answer on the way")
+		require.False(t, recording.Provenance.CommercialUseAllowed(), id)
+	}
+}
+
+func TestCreatedLibrariesAreSchemaFive(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "library.json")
+	require.NoError(t, authoring.CreateLibrary(path))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	document, err := authoring.ParseDocument(data, nil)
+	require.NoError(t, err)
+	require.Equal(t, authoring.LibrarySchemaFive, document.SchemaVersion)
+}
+
 func TestSchemaThreeStaysSchemaThreeUnlessAsked(t *testing.T) {
 	path := copyFixture(t, "library.json")
 	editor := openFixture(t, path, 0)
@@ -229,13 +287,87 @@ func TestDescriptorVersionOneFormatIsFrozen(t *testing.T) {
 	require.Equal(t, filepath.Join("testdata", "format", "library.json"), descriptor.LibraryPath(path))
 }
 
-func TestDescriptorOneIsTheOnlyDescriptorVersion(t *testing.T) {
-	data := bytes.Replace(readFormatFixture(t, "project.json"), []byte(`"schemaVersion": 1`),
-		[]byte(`"schemaVersion": 2`), 1)
+func TestDescriptorVersionTwoFormatIsFrozen(t *testing.T) {
+	path := filepath.Join("testdata", "format", "project2.json")
+	descriptor, err := authoring.ReadProjectDescriptor(path)
+	require.NoError(t, err)
+	require.Equal(t, authoring.ProjectDescriptorVersionTwo, descriptor.SchemaVersion)
+	require.Equal(t, map[string]float64{"ambient": -3, "music": 2}, descriptor.CategoryGainsDB)
+	require.InDelta(t, -3, descriptor.CategoryGainDB(authoring.CategoryAmbient), 0)
+	require.InDelta(t, 0, descriptor.CategoryGainDB(authoring.CategorySFX), 0, "a category it does not name is 0 dB")
+	one, err := authoring.ReadProjectDescriptor(filepath.Join("testdata", "format", "project.json"))
+	require.NoError(t, err)
+	one.SchemaVersion, one.CategoryGainsDB = descriptor.SchemaVersion, descriptor.CategoryGainsDB
+	require.Equal(t, one, descriptor, "version 2 adds only the category gains")
+}
+
+func TestDescriptorOneAndTwoAreTheOnlyDescriptorVersions(t *testing.T) {
+	for _, change := range []struct{ fixture, from, to string }{
+		{"project.json", `"schemaVersion": 1`, `"schemaVersion": 3`},
+		{"project2.json", `"schemaVersion": 2`, `"schemaVersion": 1`},
+	} {
+		data := bytes.Replace(readFormatFixture(t, change.fixture), []byte(change.from), []byte(change.to), 1)
+		_, err := authoring.ParseProjectDescriptor(data)
+		require.ErrorIs(t, err, authoring.ErrLibrary, change.fixture+" as "+change.to)
+	}
+}
+
+func copyDescriptor(t *testing.T, name string) (string, []byte) {
+	t.Helper()
+	data := readFormatFixture(t, name)
 	path := filepath.Join(t.TempDir(), "project.json")
 	require.NoError(t, os.WriteFile(path, data, 0o600))
-	_, err := authoring.ReadProjectDescriptor(path)
-	require.ErrorIs(t, err, authoring.ErrLibrary)
+
+	return path, data
+}
+
+func TestCategoryGainMovesADescriptorToVersionTwo(t *testing.T) {
+	path, data := copyDescriptor(t, "project.json")
+	written, err := authoring.SetDescriptorCategoryGain(path, data, authoring.CategorySFX, -4.5)
+	require.NoError(t, err)
+	descriptor, err := authoring.ReadProjectDescriptor(path)
+	require.NoError(t, err)
+	require.Equal(t, authoring.ProjectDescriptorVersionTwo, descriptor.SchemaVersion)
+	require.Equal(t, map[string]float64{"sfx": -4.5}, descriptor.CategoryGainsDB)
+	require.Equal(t, string(data), strings.Replace(
+		strings.Replace(string(written), `"schemaVersion": 2`, `"schemaVersion": 1`, 1),
+		",\n  \"categoryGainsDb\": {\n    \"sfx\": -4.5\n  }", "", 1), "every other byte is kept")
+
+	cleared, err := authoring.SetDescriptorCategoryGain(path, written, authoring.CategorySFX, 0)
+	require.NoError(t, err)
+	require.NotContains(t, string(cleared), "categoryGainsDb", "0 dB removes the entry")
+	require.Contains(t, string(cleared), `"schemaVersion": 2`, "a descriptor never moves back a version")
+
+	_, err = authoring.SetDescriptorCategoryGain(path, data, authoring.CategorySFX, 1)
+	require.ErrorIs(t, err, authoring.ErrProjectChangedOnDisk, "a stale writer is refused")
+	_, err = authoring.SetDescriptorCategoryGain(path, cleared, "voices", 1)
+	require.ErrorIs(t, err, authoring.ErrLibrary, "only known categories")
+	_, err = authoring.SetDescriptorCategoryGain(path, cleared, authoring.CategoryMusic, 13)
+	require.ErrorIs(t, err, authoring.ErrLibrary, "within a calibration's range")
+}
+
+func TestCalibrationTargetKeepsItsMethod(t *testing.T) {
+	path, data := copyDescriptor(t, "project.json")
+	written, err := authoring.SetDescriptorCalibrationTarget(path, data, -18)
+	require.NoError(t, err)
+	descriptor, err := authoring.ReadProjectDescriptor(path)
+	require.NoError(t, err)
+	require.Equal(t, authoring.CalibrationOptions{Method: authoring.ActiveRMS, TargetDB: -18}, *descriptor.Calibration)
+	require.Equal(t, authoring.ProjectDescriptorVersionOne, descriptor.SchemaVersion, "the target is version 1's")
+	require.Equal(t, string(data), strings.Replace(string(written), `"TargetDB": -18}`, `"TargetDB": -20}`, 1),
+		"every other byte is kept")
+	_, err = authoring.SetDescriptorCalibrationTarget(path, written, -3)
+	require.ErrorIs(t, err, authoring.ErrLibrary, "targets stay in [-60,-6] dB")
+
+	bare := filepath.Join(t.TempDir(), "project.json")
+	require.NoError(t, authoring.CreateProjectDescriptor(bare, "library.json"))
+	created, err := os.ReadFile(bare)
+	require.NoError(t, err)
+	_, err = authoring.SetDescriptorCalibrationTarget(bare, created, -24)
+	require.NoError(t, err)
+	descriptor, err = authoring.ReadProjectDescriptor(bare)
+	require.NoError(t, err)
+	require.Equal(t, authoring.CalibrationOptions{Method: authoring.ActiveRMS, TargetDB: -24}, *descriptor.Calibration)
 }
 
 func TestCommercialUseIsAnOrdinaryEdit(t *testing.T) {

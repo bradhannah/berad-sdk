@@ -20,22 +20,33 @@ const (
 	CategoryAmbient = routingAmbientKey
 )
 
-// ProjectDescriptorVersion is the only project descriptor version read.
-const ProjectDescriptorVersion = 1
+// Project descriptor versions read. Version 2 adds categoryGainsDb; a
+// version-1 descriptor stays version 1 until something writes a category
+// gain. ProjectDescriptorVersion is the newest, which new descriptors use.
+const (
+	ProjectDescriptorVersionOne = 1
+	ProjectDescriptorVersionTwo = 2
+	ProjectDescriptorVersion    = ProjectDescriptorVersionTwo
+)
 
 const (
 	maxDescriptorBytes     = 1 << 20
 	descriptorSliderValues = 11
 )
 
-// ProjectDescriptor is version 1 of an audio project descriptor: the file an
-// audio editor opens to find a schema-3 library and the consumer policy for
+// ProjectDescriptor is version 1 or 2 of an audio project descriptor: the
+// file an audio editor opens to find a library and the consumer policy for
 // editing it. It configures editors; it does not replace or extend the
 // manifest, and playback reads only the manifest. Library is relative to the
 // descriptor's directory unless absolute; AssetRoot and ImportDirectory stay
 // library-relative, as EditorOptions documents. Targets, TargetPolicies and
 // Ambient keep their Go field names on the wire, as version 1 published them.
 // Absent mappings mean neutral defaults, never cue-name heuristics.
+//
+// CategoryGainsDB, from version 2, is an editor's adjustment for each cue
+// category (music, sfx, ambient) in dB, applied by the editor to the gain it
+// writes for every cue in that category; playback sees only those cue gains.
+// A missing category is 0 dB.
 type ProjectDescriptor struct {
 	SchemaVersion       int                           `json:"schemaVersion"`
 	Library             string                        `json:"library"`
@@ -50,6 +61,13 @@ type ProjectDescriptor struct {
 	Ambient             *AmbientPreset                `json:"ambientPreset,omitempty"`
 	MixLabel            string                        `json:"mixLabel,omitempty"`
 	SavedNotice         string                        `json:"savedNotice,omitempty"`
+	CategoryGainsDB     map[string]float64            `json:"categoryGainsDb,omitempty"`
+}
+
+// CategoryGainDB is the descriptor's adjustment for a cue category, in dB; 0
+// when it names none.
+func (descriptor ProjectDescriptor) CategoryGainDB(category string) float64 {
+	return descriptor.CategoryGainsDB[category]
 }
 
 // TargetPolicy describes assignment eligibility and consumer help for a
@@ -146,8 +164,8 @@ func (descriptor ProjectDescriptor) LibraryPath(descriptorPath string) string {
 }
 
 func (descriptor ProjectDescriptor) validate() error {
-	if descriptor.SchemaVersion != ProjectDescriptorVersion || descriptor.Library == "" {
-		return fmt.Errorf("%w: project requires schemaVersion 1 and library", ErrLibrary)
+	if err := descriptor.validateVersion(); err != nil {
+		return err
 	}
 	if descriptor.Calibration != nil && !validDescriptorCalibration(*descriptor.Calibration) {
 		return fmt.Errorf("%w: invalid calibration policy", ErrLibrary)
@@ -172,6 +190,29 @@ func (descriptor ProjectDescriptor) validate() error {
 	}
 
 	return validateAuthoringTargets(descriptor.Targets)
+}
+
+// validateVersion accepts versions 1 and 2 naming a library, and category
+// gains only from version 2, each for a known category and finite in a
+// calibration's [-48,+12] dB range.
+func (descriptor ProjectDescriptor) validateVersion() error {
+	version := descriptor.SchemaVersion
+	if version < ProjectDescriptorVersionOne || version > ProjectDescriptorVersionTwo || descriptor.Library == "" {
+		return fmt.Errorf("%w: project requires schemaVersion 1 or 2 and library", ErrLibrary)
+	}
+	if descriptor.CategoryGainsDB == nil {
+		return nil
+	}
+	if descriptor.SchemaVersion < ProjectDescriptorVersionTwo {
+		return fmt.Errorf("%w: categoryGainsDb needs project descriptor version 2", ErrLibrary)
+	}
+	for category, gain := range descriptor.CategoryGainsDB {
+		if !validCueCategory(category) || !finiteRange(gain, calibrationMinGain, calibrationMaxGain) {
+			return fmt.Errorf("%w: category gain for %q must be a known category in [-48,12] dB", ErrLibrary, category)
+		}
+	}
+
+	return nil
 }
 
 func validCueCategory(value string) bool {

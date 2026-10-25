@@ -42,7 +42,8 @@ func DefaultOptions(backend Backend, decode Decoder) Options {
 
 // PlayOptions control one instance. Slot is allowed only through Owner.Play;
 // a successfully prepared instance replaces that owner's same slot, even if its
-// cue changed. Empty Slot permits independent overlap. Gain zero is deliberate.
+// cue changed. Empty Slot permits independent overlap. Gain is in
+// [0,MaxGain]; zero is deliberate.
 type PlayOptions struct {
 	Loop   bool
 	Gain   float64
@@ -176,7 +177,7 @@ func (runtime *Runtime) play(cueID CueID, options PlayOptions, owner *Owner) (Pl
 }
 
 func (options PlayOptions) validate() error {
-	if !unitGain(options.Gain) || options.FadeIn < 0 || options.ReleaseTail < 0 ||
+	if !boundedGain(options.Gain) || options.FadeIn < 0 || options.ReleaseTail < 0 ||
 		(options.Loop && options.ReleaseTail > 0) {
 		return fmt.Errorf("%w: invalid gain/fade/release tail", ErrInvalidRequest)
 	}

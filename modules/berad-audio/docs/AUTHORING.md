@@ -35,7 +35,14 @@ and rejected in schema 3. It verifies no licence. A library keeps the schema it 
 read with; `EditorOptions.SchemaVersion` asks for an upgrade, which happens when the
 library opens, records every recording as not cleared, and is written by the next
 save without an Undo entry. New schema-4 recordings start not cleared.
-`CreateLibrary` writes schema 4.
+
+Schema 5 is schema 4 with a cue's `volumeModifier` allowed up to `audio.MaxGain`
+(+12 dB) instead of 1, so a cue can play louder than its recordings' calibrated
+level; `MaxCueGain` gives the limit for a schema. Upgrades go one version at a
+time: 3 to 4 records commercial use, 4 to 5 changes no entry. A gain above 1 is
+applied to decoded samples and can clip loud content: compare a calibration
+suggestion's `PeakDB`, the recording's calibration and the cue's gain against
+`CalibrationPeakCeilingDB` before choosing one. `CreateLibrary` writes schema 5.
 
 `Routing.Groups` retains schema-3 wire keys `music`, `dungeon`, `naval`. Their labels,
 target identities, categories, inheritance defaults and eligibility are consumer
@@ -44,7 +51,7 @@ cue are distinct. New sections require an explicit future schema revision.
 Consumers also supply tile families/labels and emitter targets; SDK does not discover
 a world, infer target policy from prefixes, or decide which source is active.
 
-`ReadProjectDescriptor` reads version 1 of the project descriptor (`project.json`)
+`ReadProjectDescriptor` reads version 1 or 2 of the project descriptor (`project.json`)
 that tells an editor which library to open and with what consumer policy. It is
 editor configuration, not a second manifest; playback reads only the manifest. Its
 `library` resolves against the descriptor (`LibraryPath`); `assetRoot` and
@@ -56,10 +63,16 @@ cue's category from the consumer's `CueCategories`, else ambient for a cue with 
 ambient routing profile, else SFX, so every frontend groups cues alike.
 `ParseProjectDescriptor` validates bytes the caller read itself, and
 `EditorOptions` turns a descriptor into `OpenLibraryProject` options, calibrating by
-family as the descriptor names. `CreateProjectDescriptor` writes a descriptor that
-names only its library. `SetDescriptorCueCategory` changes one cue's entry in
-`targets.CueCategories`, keeping every other byte; it refuses with
+family as the descriptor names. `CreateProjectDescriptor` writes a version-1
+descriptor that names only its library. `SetDescriptorCueCategory` changes one
+cue's entry in `targets.CueCategories`, keeping every other byte; it refuses with
 `ErrProjectChangedOnDisk` unless the file still holds the bytes the caller read.
+`SetDescriptorCalibrationTarget` sets the fallback calibration target the same way,
+keeping its method. Version 2 adds `categoryGainsDb`, an editor's adjustment in dB
+for each cue category, in [-48,+12]; the editor applies it to the gains it writes
+for that category's cues, and playback sees only those gains. `CategoryGainDB`
+reads one, 0 when absent. `SetDescriptorCategoryGain` writes one, removes it at 0,
+and moves a version-1 descriptor to version 2 the first time it writes one.
 
 `CreateLibrary` writes an empty library and never replaces a file. `CreateCue`
 refuses an existing ID, because cue IDs are references; without a named profile
@@ -198,10 +211,10 @@ More than one frontend edits these files: the terminal audio editor, kept for it
 existing consumers, and berad-editor, which is taking over audio editing. Games
 that ship schema-3 libraries, Ultima V Redux among them, read the same files.
 Every frontend reads and writes them only through `authoring`, never with its own
-parser. Schemas 3 and 4 and descriptor 1 stay readable and writable as they are,
-and an editor writes the schema it opened unless it asks for an upgrade, so a
-schema-3 library stays schema 3. A change to any of them is a new version with a
-step-by-step upgrade, never an edit to the current one. `authoring/testdata/format`
-holds a schema-3 library, a schema-4 library and a descriptor using every field; its
-guard test fails when an encoded field is renamed, retyped, added or dropped.
+parser. Schemas 3, 4 and 5 and descriptors 1 and 2 stay readable and writable as
+they are, and an editor writes the schema it opened unless it asks for an upgrade,
+so a schema-3 library stays schema 3. A change to any of them is a new version with
+a step-by-step upgrade, never an edit to the current one. `authoring/testdata/format`
+holds a library of each schema and a descriptor of each version using every field;
+its guard test fails when an encoded field is renamed, retyped, added or dropped.
 Change those files only together with a new version.

@@ -24,6 +24,12 @@ const (
 	absoluteEnergyFloor       = 1e-7
 )
 
+// CalibrationPeakCeilingDB is the loudest sample peak, in dBFS, a suggested
+// calibration lets a recording reach. A frontend that plays a recording
+// louder still, through a cue's gain, can compare against it: a suggestion's
+// PeakDB plus every gain applied should stay at or below it.
+const CalibrationPeakCeilingDB = calibrationPeakCeiling
+
 // CalibrationMethod selects measurement explicitly, independently of consumer
 // family names. Gated selections under 400 ms fall back to active RMS.
 type CalibrationMethod string

@@ -79,6 +79,8 @@ library; Ebitengine and codec dependencies enter through the backend adapter.
 `DefaultOptions` provides unity volume, eight voices and `time.Now`. A fully
 explicit `Options` must supply its backend, decoder, clock and positive limit;
 zero volume deliberately mutes. `DefaultPlayOptions` supplies unity request gain.
+A cue's gain and a request's gain each reach `MaxGain` (+12 dB); volume stays in
+[0,1].
 
 ```go
 request := audio.DefaultPlayOptions()
@@ -157,8 +159,9 @@ document/project layer described below, not this source-file API.
 - `Path`, `DurationMs` and `Fingerprint` are scalar observations. `PeakBetween`
   inspects inclusive source-time buckets without exposing storage or copying all
   peaks. Source analysis and verification are observational.
-- `SuggestedWindow` proposes a -40 dB threshold with edge padding. It never
-  publishes edits. `PlaybackWindow` uses source milliseconds with an exclusive
+- `SuggestedWindow` proposes a -40 dB threshold with edge padding, and
+  `SuggestedWindows` one such window for each sound that a given length of
+  silence separates from the next. Neither publishes edits. `PlaybackWindow` uses source milliseconds with an exclusive
   end, matching the existing authoring format. Nil means the entire source.
 - `SuggestCalibration` accepts an explicit method and target, not game family
   names. `DefaultCalibrationOptions` selects active P95 RMS with target -20 dB.
@@ -188,14 +191,14 @@ document/project layer described below, not this source-file API.
 
 Immutable source methods can be called concurrently if the supplied decoder itself
 supports independent concurrent calls. Stream operations remain caller-serialized.
-`OpenLibraryProject(path, EditorOptions)` opens a disk-backed schema-3 or schema-4 project with
+`OpenLibraryProject(path, EditorOptions)` opens a disk-backed schema-3, 4 or 5 project with
 explicit decoder and calibration callbacks. Optional consumer validation receives
 detached metadata; it owns completeness, vocabulary and target eligibility.
 `DefaultEditorOptions` supplies the generic active-RMS policy for a given decoder;
 games supply their family-specific targets explicitly.
 `CalibrationOptionsFor` lets frontends inspect the actual effective policy and
 authored override without maintaining another set of calibration defaults.
-`ReadProjectDescriptor` reads the version-1 project descriptor an editor opens, and
+`ReadProjectDescriptor` reads the version-1 or 2 project descriptor an editor opens, and
 `CueCategory` gives every frontend the same music, SFX or ambient category for a
 cue; see the [authoring contract](docs/AUTHORING.md#document-and-policy-boundaries).
 A frontend that saves after every edit creates libraries and cues, deletes them,
@@ -215,8 +218,9 @@ arbitrary target identities and any default target used for inheritance. Missing
 targets, explicit null/silence, and concrete cues remain distinct. Additional wire
 sections require an explicit future schema revision; the initial extraction does
 not silently extend schema 3. Schema 4 adds only each recording's
-`provenance.commercialUse`; a schema-3 library stays schema 3 unless an editor asks
-to upgrade it ([authoring contract](docs/AUTHORING.md#document-and-policy-boundaries)).
+`provenance.commercialUse`, and schema 5 lets a cue's gain reach `MaxGain`; a library
+stays the schema it was read with unless an editor asks to upgrade it
+([authoring contract](docs/AUTHORING.md#document-and-policy-boundaries)).
 Structural validation rejects duplicate JSON keys,
 unknown fields/sections, invalid references and malformed numbers. Consumer
 validation adds vocabulary, completeness and target eligibility.

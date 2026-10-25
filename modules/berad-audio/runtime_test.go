@@ -222,10 +222,50 @@ func TestDecoderCannotMutateLibraryOrSiblingRuntime(t *testing.T) {
 	}
 }
 
+func TestCueAndRequestGainsReachTwelveDecibels(t *testing.T) {
+	files := fstest.MapFS{"a.pcm": {Data: []byte{1, 2, 3, 4}}}
+	louder := func(gain float64) audio.Definition {
+		return audio.Definition{Recordings: map[audio.RecordingID]audio.Recording{"a": {File: "a.pcm"}},
+			Cues: map[audio.CueID]audio.Cue{"loud": {Recordings: []audio.RecordingID{"a"}, Gain: gain}}}
+	}
+	if _, err := audio.NewLibrary(louder(audio.MaxGain*1.001), files, 4); !errors.Is(err, audio.ErrInvalidLibrary) {
+		t.Fatalf("a cue gain above +12 dB was accepted: %v", err)
+	}
+	library, err := audio.NewLibrary(louder(audio.MaxGain), files, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := new(backend)
+	runtime, err := audio.NewRuntime(library, audio.DefaultOptions(host, func(data []byte, _ string, _ int) (audio.PCMStream, error) {
+		return &pcm{Reader: bytes.NewReader(data), length: int64(len(data))}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := runtime.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	request := audio.DefaultPlayOptions()
+	request.Gain = 2
+	result, err := runtime.Play("loud", request)
+	if err != nil || result.Outcome != audio.Admitted {
+		t.Fatalf("a request louder than unity was refused: %+v, %v", result, err)
+	}
+	if snapshot := runtime.Snapshot()[0]; math.Abs(snapshot.TargetGain-2*audio.MaxGain) > 1e-9 {
+		t.Fatalf("target gain %v, want cue gain times request gain", snapshot.TargetGain)
+	}
+	request.Gain = audio.MaxGain * 1.001
+	if _, err := runtime.Play("loud", request); !errors.Is(err, audio.ErrInvalidRequest) {
+		t.Fatalf("a request above +12 dB was accepted: %v", err)
+	}
+}
+
 func TestInvalidRequestCannotEvictOrAdvanceSelection(t *testing.T) {
 	state := newFixture(t, 1, 1)
 	play(t, state.runtime, audio.DefaultPlayOptions())
-	for _, gain := range []float64{-1, 2, math.NaN(), math.Inf(1)} {
+	for _, gain := range []float64{-1, audio.MaxGain + 1, math.NaN(), math.Inf(1)} {
 		request := audio.DefaultPlayOptions()
 		request.Gain = gain
 		if _, err := state.runtime.Play("panel/accept", request); !errors.Is(err, audio.ErrInvalidRequest) {
