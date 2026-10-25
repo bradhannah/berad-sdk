@@ -84,6 +84,7 @@ func (e *LibraryEditor) importSourceLocked(recordingID string, clip *RecordingAu
 	}
 	next := cloneAudioValue(e.library)
 	next.Recordings[recordingID] = replacement
+	fillCommercialUse(next)
 	if _, err := parseLibraryDocument(encodeAudioValue(next), e.validator); err != nil {
 		return err // All authored validation precedes any copied-file publication.
 	}

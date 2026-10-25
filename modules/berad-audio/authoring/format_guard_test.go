@@ -1,10 +1,10 @@
 package authoring_test
 
-// The format guard keeps schema-3 libraries and version-1 project descriptors
-// exactly as every editor and game reading them expects. testdata/format holds
-// one of each using every field. A change that renames, retypes, adds or
-// drops an encoded field fails here; it needs a new schema or descriptor
-// version with a step-by-step upgrade, not an edit to these files.
+// The format guard keeps schema-3 and schema-4 libraries and version-1 project
+// descriptors exactly as every editor and game reading them expects.
+// testdata/format holds one of each using every field. A change that renames,
+// retypes, adds or drops an encoded field fails here; it needs a new schema or
+// descriptor version with a step-by-step upgrade, not an edit to these files.
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
+	"github.com/bradhannah/berad-sdk/modules/berad-audio/backend/ebitengine"
 )
 
 func readFormatFixture(t *testing.T, name string) []byte {
@@ -37,8 +38,10 @@ func requireEncodes(t *testing.T, fixture json.RawMessage, value any, what strin
 	require.Equal(t, want.String(), string(encoded), what)
 }
 
-func TestSchemaThreeFormatIsFrozen(t *testing.T) {
-	data := readFormatFixture(t, "library.json")
+// requireLibraryEncodes checks that every entry of a library fixture encodes
+// back to exactly its bytes.
+func requireLibraryEncodes(t *testing.T, data []byte) authoring.LibraryDocument {
+	t.Helper()
 	document, err := authoring.ParseDocument(data, nil)
 	require.NoError(t, err)
 	var fixture struct {
@@ -59,7 +62,31 @@ func TestSchemaThreeFormatIsFrozen(t *testing.T) {
 	}
 	requireEncodes(t, fixture.Taxonomy, document.Taxonomy, "taxonomy")
 	requireEncodes(t, fixture.Routing, document.Routing, "routing")
+	require.Equal(t, fixture.SchemaVersion, document.SchemaVersion)
 
+	return document
+}
+
+func TestSchemaThreeFormatIsFrozen(t *testing.T) {
+	document := requireLibraryEncodes(t, readFormatFixture(t, "library.json"))
+	requireFixtureValues(t, document)
+	for id, recording := range document.Recordings {
+		require.Nil(t, recording.Provenance.CommercialUse, id+": schema 3 records no commercial use")
+	}
+}
+
+func TestSchemaFourFormatIsFrozen(t *testing.T) {
+	document := requireLibraryEncodes(t, readFormatFixture(t, "library4.json"))
+	requireFixtureValues(t, document)
+	for id, cleared := range map[string]bool{"door_open_a": true, "door_open_b": true,
+		"panel_signal": false, "river_loop": false} {
+		require.Equal(t, cleared, *document.Recordings[id].Provenance.CommercialUse, id)
+		require.Equal(t, cleared, document.Recordings[id].Provenance.CommercialUseAllowed(), id)
+	}
+}
+
+func requireFixtureValues(t *testing.T, document authoring.LibraryDocument) {
+	t.Helper()
 	// Independent values, so a field decoding into the wrong place fails too.
 	door := document.Recordings["door_open_a"]
 	require.Equal(t, "sounds/door_open_a.wav", *door.File)
@@ -83,11 +110,91 @@ func TestSchemaThreeFormatIsFrozen(t *testing.T) {
 	require.Nil(t, quiet, "explicit silence stays distinct from a missing target")
 }
 
-func TestSchemaThreeIsTheOnlyLibraryVersion(t *testing.T) {
-	data := bytes.Replace(readFormatFixture(t, "library.json"), []byte(`"schemaVersion": 3`),
+func TestSchemaThreeAndFourAreTheOnlyLibraryVersions(t *testing.T) {
+	for _, change := range []struct{ fixture, from, to string }{
+		{"library.json", `"schemaVersion": 3`, `"schemaVersion": 2`},
+		{"library4.json", `"schemaVersion": 4`, `"schemaVersion": 5`},
+	} {
+		data := bytes.Replace(readFormatFixture(t, change.fixture), []byte(change.from), []byte(change.to), 1)
+		_, err := authoring.ParseDocument(data, nil)
+		require.ErrorIs(t, err, authoring.ErrLibrary, change.to)
+	}
+}
+
+func TestCommercialUseBelongsToSchemaFour(t *testing.T) {
+	early := bytes.Replace(readFormatFixture(t, "library4.json"), []byte(`"schemaVersion": 4`),
+		[]byte(`"schemaVersion": 3`), 1)
+	_, err := authoring.ParseDocument(early, nil)
+	require.ErrorIs(t, err, authoring.ErrLibrary, "schema 3 has no commercialUse")
+	missing := bytes.Replace(readFormatFixture(t, "library.json"), []byte(`"schemaVersion": 3`),
 		[]byte(`"schemaVersion": 4`), 1)
-	_, err := authoring.ParseDocument(data, nil)
-	require.ErrorIs(t, err, authoring.ErrLibrary)
+	_, err = authoring.ParseDocument(missing, nil)
+	require.ErrorIs(t, err, authoring.ErrLibrary, "schema 4 requires commercialUse")
+}
+
+func copyFixture(t *testing.T, name string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "library.json")
+	require.NoError(t, os.WriteFile(path, readFormatFixture(t, name), 0o600))
+
+	return path
+}
+
+func openFixture(t *testing.T, path string, schema int) *authoring.LibraryEditor {
+	t.Helper()
+	options := authoring.DefaultEditorOptions(ebitengine.Decode)
+	options.SchemaVersion = schema
+	editor, err := authoring.OpenLibraryProject(path, options)
+	require.NoError(t, err)
+
+	return editor
+}
+
+func TestUpgradeToSchemaFourChangesOnlyRecordingsAndVersion(t *testing.T) {
+	path := copyFixture(t, "library.json")
+	before := readFormatFixture(t, "library.json")
+	editor := openFixture(t, path, authoring.LibrarySchemaFour)
+	require.Equal(t, authoring.LibrarySchemaFour, editor.SchemaVersion())
+	require.True(t, editor.Dirty(), "the upgrade waits for the next save")
+	require.False(t, editor.Undo(), "Undo cannot take the upgrade back")
+	require.NoError(t, editor.SaveChanged())
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	document, err := authoring.ParseDocument(after, nil)
+	require.NoError(t, err)
+	require.Equal(t, authoring.LibrarySchemaFour, document.SchemaVersion)
+	for id, recording := range document.Recordings {
+		require.False(t, recording.Provenance.CommercialUseAllowed(), id+" is not cleared until its author says so")
+	}
+	for _, name := range []string{"cues", "taxonomy", "routing"} {
+		require.Equal(t, rawSection(t, before, name), rawSection(t, after, name), name)
+	}
+	_, err = authoring.OpenLibraryProject(path, func() authoring.EditorOptions {
+		options := authoring.DefaultEditorOptions(ebitengine.Decode)
+		options.SchemaVersion = authoring.LibrarySchemaThree
+		return options
+	}())
+	require.ErrorIs(t, err, authoring.ErrLibrary, "a library never moves back a schema")
+}
+
+func TestSchemaThreeStaysSchemaThreeUnlessAsked(t *testing.T) {
+	path := copyFixture(t, "library.json")
+	editor := openFixture(t, path, 0)
+	require.False(t, editor.Dirty())
+	require.NoError(t, editor.AddRecording("new_slot"))
+	require.NoError(t, editor.SaveChanged())
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(after), `"schemaVersion": 3`)
+	require.NotContains(t, string(after), "commercialUse")
+}
+
+func rawSection(t *testing.T, data []byte, name string) string {
+	t.Helper()
+	var sections map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(data, &sections))
+
+	return string(sections[name])
 }
 
 func TestDescriptorVersionOneFormatIsFrozen(t *testing.T) {
@@ -129,4 +236,21 @@ func TestDescriptorOneIsTheOnlyDescriptorVersion(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, data, 0o600))
 	_, err := authoring.ReadProjectDescriptor(path)
 	require.ErrorIs(t, err, authoring.ErrLibrary)
+}
+
+func TestCommercialUseIsAnOrdinaryEdit(t *testing.T) {
+	cleared := true
+	path := copyFixture(t, "library4.json")
+	editor := openFixture(t, path, 0)
+	provenance := editor.Recording("river_loop").Provenance
+	provenance.CommercialUse = &cleared
+	require.NoError(t, editor.SetRecordingProvenance("river_loop", provenance))
+	require.NoError(t, editor.SaveChanged())
+	require.True(t, openFixture(t, path, 0).Recording("river_loop").Provenance.CommercialUseAllowed())
+
+	early := openFixture(t, copyFixture(t, "library.json"), 0)
+	provenance = early.Recording("river_loop").Provenance
+	provenance.CommercialUse = &cleared
+	require.ErrorIs(t, early.SetRecordingProvenance("river_loop", provenance), authoring.ErrLibrary,
+		"schema 3 cannot record it")
 }

@@ -14,7 +14,16 @@ import (
 // ErrAudioLibrary is the schema-3 compatibility identity for invalid library data.
 var ErrAudioLibrary = ErrLibrary
 
-// LibraryDocument is the detached schema-3 compatibility document. Routing wire
+// Library schema versions read and written. Schema 3 is the format Ultima V
+// Redux ships; schema 4 adds each recording's commercialUse. A library keeps
+// the version it was read with unless an editor asks for an upgrade.
+const (
+	LibrarySchemaThree   = 3
+	LibrarySchemaFour    = 4
+	LibrarySchemaVersion = LibrarySchemaFour
+)
+
+// LibraryDocument is the detached schema-3 or schema-4 document. Routing wire
 // names are retained; their labels, target identities and policies are consumer-owned.
 type LibraryDocument = audioLibrary
 
@@ -22,7 +31,7 @@ type LibraryDocument = audioLibrary
 // It receives a detached value and cannot mutate the authoritative document.
 type LibraryValidator func(LibraryDocument) error
 
-// ParseDocument validates one schema-3 document without opening its files or an
+// ParseDocument validates one schema-3 or schema-4 document without opening its files or an
 // audio device. The returned maps belong to the caller; validator inputs are
 // detached separately. Disk repair and immutable game loading share this parser.
 func ParseDocument(data []byte, validate LibraryValidator) (LibraryDocument, error) {
@@ -73,16 +82,12 @@ func parseLibraryDocument(data []byte, validate LibraryValidator) (*audioLibrary
 	if err := decoder.Decode(&library); err != nil {
 		return nil, fmt.Errorf("%w: decode: %w", ErrAudioLibrary, err)
 	}
-	if library.SchemaVersion != 3 || library.Recordings == nil || library.Cues == nil {
-		return nil, fmt.Errorf("%w: require schemaVersion 3, recordings, cues, taxonomy, and routing", ErrAudioLibrary)
+	if library.SchemaVersion != LibrarySchemaThree && library.SchemaVersion != LibrarySchemaFour ||
+		library.Recordings == nil || library.Cues == nil {
+		return nil, fmt.Errorf("%w: require schemaVersion 3 or 4, recordings, cues, taxonomy, and routing", ErrAudioLibrary)
 	}
-	for id, recording := range library.Recordings {
-		if err := validateRecordingProvenance(id, recording.Provenance); err != nil {
-			return nil, err
-		}
-		if err := validateLibraryRecordingMetadata(id, recording); err != nil {
-			return nil, err
-		}
+	if err := validateLibraryRecordings(&library); err != nil {
+		return nil, err
 	}
 	if err := validateCoreLibraryCues(&library); err != nil {
 		return nil, err
@@ -100,6 +105,22 @@ func parseLibraryDocument(data []byte, validate LibraryValidator) (*audioLibrary
 	}
 
 	return &library, nil
+}
+
+func validateLibraryRecordings(library *audioLibrary) error {
+	for recordingID, recording := range library.Recordings {
+		if err := validateRecordingProvenance(recordingID, recording.Provenance); err != nil {
+			return err
+		}
+		if err := validateCommercialUse(library.SchemaVersion, recordingID, recording.Provenance); err != nil {
+			return err
+		}
+		if err := validateLibraryRecordingMetadata(recordingID, recording); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func validateLibraryRecordingMetadata(recordingID string, recording libraryRecording) error {

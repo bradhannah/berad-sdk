@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 4,
+  "recordings": {
+    "door_open_a": {
+      "file": "sounds/door_open_a.wav",
+      "calibrationGainDb": -4.5,
+      "calibrationMode": "auto",
+      "calibrationTargetDb": -20,
+      "playbackWindow": {"startMs": 120, "endMs": 1180},
+      "provenance": {
+        "originalFilename": "door open A.wav",
+        "sourceType": "recorded",
+        "sourceUrl": "https://example.com/door",
+        "sourceCreator": "Example Creator",
+        "license": "CC0-1.0",
+        "importedFrom": "/recordings/door open A.wav",
+        "processing": [{"description": "trimmed silence", "tool": "example-editor", "performedBy": "Example Creator"}],
+        "commercialUse": true
+      },
+      "note": "Hinge creak, first take.",
+      "searchTerms": ["creak", "hinge"]
+    },
+    "door_open_b": {
+      "file": "sounds/door_open_b.wav",
+      "calibrationGainDb": -6,
+      "calibrationMode": "manual",
+      "provenance": {
+        "originalFilename": "door open B.wav",
+        "sourceType": "recorded",
+        "sourceUrl": "unknown",
+        "sourceCreator": "Example Creator",
+        "license": "CC0-1.0",
+        "importedFrom": "unknown",
+        "processing": [],
+        "commercialUse": true
+      }
+    },
+    "panel_signal": {
+      "file": null,
+      "provenance": {
+        "originalFilename": "unknown",
+        "sourceType": "unknown",
+        "sourceUrl": "unknown",
+        "sourceCreator": "unknown",
+        "license": "unknown",
+        "importedFrom": "unknown",
+        "processing": [],
+        "commercialUse": false
+      }
+    },
+    "river_loop": {
+      "file": "ambience/river_loop.ogg",
+      "provenance": {
+        "originalFilename": "river.ogg",
+        "sourceType": "generated",
+        "sourceUrl": "unknown",
+        "sourceCreator": "unknown",
+        "license": "unknown",
+        "importedFrom": "unknown",
+        "processing": [],
+        "commercialUse": false
+      }
+    }
+  },
+  "cues": {
+    "bed/river": {"name": "River", "recordingId": "river_loop", "volumeModifier": 0.6, "howToHear": "Stand near water."},
+    "door/open": {
+      "name": "Door opens",
+      "recordingIds": ["door_open_a", "door_open_b"],
+      "selection": "cycle",
+      "volumeModifier": 0.8,
+      "howToHear": "Open any door.",
+      "searchTerms": ["entrance"]
+    },
+    "panel/accept": {"name": "Accept", "recordingId": "panel_signal", "volumeModifier": 1, "howToHear": "Accept a choice."}
+  },
+  "taxonomy": {
+    "recordingFamilies": {"signal": ["panel_signal"], "water": ["river_loop"], "wood": ["door_open_a", "door_open_b"]},
+    "cueProfiles": {"door": ["door/open"], "panel": ["panel/accept"], "river": ["bed/river"]},
+    "profiles": {
+      "door": {
+        "targetAcousticFamily": "wood",
+        "phase": "start",
+        "outcome": "neutral",
+        "mixRole": "foreground",
+        "emitters": ["door"],
+        "contexts": ["interior"]
+      },
+      "panel": {
+        "targetAcousticFamily": "signal",
+        "phase": "instant",
+        "outcome": "success",
+        "mixRole": "interface",
+        "emitters": ["menu"],
+        "contexts": ["menu"]
+      },
+      "river": {
+        "targetAcousticFamily": "water",
+        "phase": "loop",
+        "outcome": "neutral",
+        "mixRole": "bed",
+        "emitters": ["river"],
+        "contexts": ["exterior"]
+      }
+    },
+    "profileSearchTerms": {"door": ["gate"]}
+  },
+  "routing": {
+    "ambient": {"bed/river": {"radiusTiles": 8, "fadeInMs": 800, "fadeOutMs": 1200}},
+    "defaultSurface": "stone",
+    "emitters": {"fountain": "bed/river"},
+    "music": {"fallback": "panel/accept", "quiet": null},
+    "surfaces": {"stone": ["door/open"]},
+    "tiles": {"water": {"ambientCue": "bed/river", "radiusTiles": 4, "gain": 0.5}}
+  }
+}

@@ -208,6 +208,11 @@ func objectSpans(data []byte) map[string]jsonEdit {
 func (e *LibraryEditor) formattedChanges() []byte {
 	roots := objectSpans(e.saved)
 	edits := entryEdits(roots["recordings"], e.library.Recordings)
+	if e.library.SchemaVersion != e.baseline.SchemaVersion {
+		version := roots["schemaVersion"]
+		edits = append(edits, jsonEdit{start: version.start, end: version.end,
+			data: encodeAudioValue(e.library.SchemaVersion)})
+	}
 	edits = append(edits, entryEdits(roots["cues"], e.library.Cues)...)
 	if !bytes.Equal(encodeAudioValue(e.library.Routing), encodeAudioValue(e.baseline.Routing)) {
 		edits = append(edits, routingEntryEdits(roots["routing"], e.library.Routing)...)

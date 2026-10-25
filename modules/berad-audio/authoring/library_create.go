@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 )
 
+// emptyLibrary is a library in the newest schema with nothing in it.
 const emptyLibrary = `{
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "recordings": {},
   "cues": {},
   "taxonomy": {
@@ -21,7 +22,7 @@ const emptyLibrary = `{
 
 const createdFileMode = 0o644
 
-// CreateLibrary writes an empty library, with no recordings, cues,
+// CreateLibrary writes an empty schema-4 library, with no recordings, cues,
 // classifications or routing, at path. The file appears complete or not at
 // all, and an existing file is never replaced.
 func CreateLibrary(path string) error {

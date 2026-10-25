@@ -66,6 +66,10 @@ type EditorOptions struct {
 	// ImportDestination receives detached metadata and the source fingerprint.
 	// It must return a valid relative destination; no files have been published yet.
 	ImportDestination func(string, Recording, string, string) (string, error)
+	// SchemaVersion upgrades an older library when it is opened, as an unsaved
+	// change that Undo cannot take back; the next save writes it. Zero keeps the
+	// version read, so an editor that never asks writes what it opened.
+	SchemaVersion int
 }
 
 // DefaultEditorOptions supplies generic active-RMS calibration and relative
@@ -117,9 +121,51 @@ func OpenLibraryProject(path string, options EditorOptions) (*LibraryEditor, err
 	editor.baseline, editor.saved = library, data
 	editor.beginPublication(absolute, false)
 	editor.publication.State = PublicationUnchanged
+	if err := editor.upgrade(options.SchemaVersion); err != nil {
+		return nil, err
+	}
 
 	return editor, nil
 }
+
+// upgrade moves an opened library to a newer schema. Schema 4 records no
+// recording as cleared for commercial use until its author says so.
+func (e *LibraryEditor) upgrade(version int) error {
+	if version == 0 || version == e.library.SchemaVersion {
+		return nil
+	}
+	if version != LibrarySchemaFour || e.library.SchemaVersion > version {
+		return fmt.Errorf("%w: cannot move schema %d to %d", ErrAudioLibrary, e.library.SchemaVersion, version)
+	}
+	next := cloneAudioValue(e.library)
+	next.SchemaVersion = version
+	fillCommercialUse(next)
+	if _, err := parseLibraryDocument(encodeAudioValue(next), e.validator); err != nil {
+		return err
+	}
+	e.library = next
+
+	return nil
+}
+
+// fillCommercialUse records "not cleared" for each schema-4 recording that has
+// no answer yet, such as a new slot or an import from a frontend that does not
+// ask, so every schema-4 edit stays valid.
+func fillCommercialUse(library *audioLibrary) {
+	if library.SchemaVersion < LibrarySchemaFour {
+		return
+	}
+	for id, recording := range library.Recordings {
+		if recording.Provenance.CommercialUse == nil {
+			cleared := false
+			recording.Provenance.CommercialUse = &cleared
+			library.Recordings[id] = recording
+		}
+	}
+}
+
+// SchemaVersion is the schema the library is edited in, and the one saving writes.
+func (e *LibraryEditor) SchemaVersion() int { return e.library.SchemaVersion }
 
 func validateAuthoringTargets(targets AuthoringTargets) error {
 	for _, category := range targets.CueCategories {
@@ -408,6 +454,7 @@ func removeTaxonomyID(groups map[string][]string, identity string) {
 }
 
 func (e *LibraryEditor) replace(next *audioLibrary) error {
+	fillCommercialUse(next)
 	encoded, err := json.Marshal(next)
 	if err != nil {
 		return fmt.Errorf("invalid audio edit: %w", err)

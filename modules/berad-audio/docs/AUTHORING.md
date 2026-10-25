@@ -29,6 +29,14 @@ license, import lineage and processing independently. Unknown text is literal
 `unknown`; `processing: []` means no documented steps, not proof of no processing.
 Editing a license records supplied terms rather than verifying their validity.
 
+Schema 4 is schema 3 plus `provenance.commercialUse` on every recording: the
+author's judgement that it may be used in a commercial game, required in schema 4
+and rejected in schema 3. It verifies no licence. A library keeps the schema it was
+read with; `EditorOptions.SchemaVersion` asks for an upgrade, which happens when the
+library opens, records every recording as not cleared, and is written by the next
+save without an Undo entry. New schema-4 recordings start not cleared.
+`CreateLibrary` writes schema 4.
+
 `Routing.Groups` retains schema-3 wire keys `music`, `dungeon`, `naval`. Their labels,
 target identities, categories, inheritance defaults and eligibility are consumer
 descriptors. Missing assignment/inheritance, explicit null/silence and a concrete
@@ -188,8 +196,10 @@ More than one frontend edits these files: the terminal audio editor, kept for it
 existing consumers, and berad-editor, which is taking over audio editing. Games
 that ship schema-3 libraries, Ultima V Redux among them, read the same files.
 Every frontend reads and writes them only through `authoring`, never with its own
-parser. Schema 3 and descriptor 1 stay readable and writable as they are. A change
-to either is a new version with a step-by-step upgrade, never an edit to the
-current one. `authoring/testdata/format` holds one library and one descriptor using
-every field; its guard test fails when an encoded field is renamed, retyped, added
-or dropped. Change those files only together with a new version.
+parser. Schemas 3 and 4 and descriptor 1 stay readable and writable as they are,
+and an editor writes the schema it opened unless it asks for an upgrade, so a
+schema-3 library stays schema 3. A change to any of them is a new version with a
+step-by-step upgrade, never an edit to the current one. `authoring/testdata/format`
+holds a schema-3 library, a schema-4 library and a descriptor using every field; its
+guard test fails when an encoded field is renamed, retyped, added or dropped.
+Change those files only together with a new version.
