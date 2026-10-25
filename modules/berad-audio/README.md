@@ -197,7 +197,10 @@ games supply their family-specific targets explicitly.
 authored override without maintaining another set of calibration defaults.
 `ReadProjectDescriptor` reads the version-1 project descriptor an editor opens, and
 `CueCategory` gives every frontend the same music, SFX or ambient category for a
-cue; see the [authoring contract](docs/AUTHORING.md#document-and-policy-boundaries). Asset
+cue; see the [authoring contract](docs/AUTHORING.md#document-and-policy-boundaries).
+A frontend that saves after every edit creates libraries and cues, deletes them,
+writes a cue's category into the descriptor and saves with `SaveChanged`; the same
+contract lists those operations. Asset
 roots resolve against the manifest directory, not the process directory. Imports
 default to `imported/`; a project can supply its own relative destination policy
 and existing-path eligibility. These are trusted local-project filesystem rules,

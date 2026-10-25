@@ -9,6 +9,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+
+	audio "github.com/bradhannah/berad-sdk/modules/berad-audio"
 )
 
 // Cue categories, as descriptors and CueCategory name them.
@@ -79,6 +81,13 @@ func ReadProjectDescriptor(path string) (ProjectDescriptor, error) {
 	if err := errors.Join(readErr, file.Close()); err != nil {
 		return ProjectDescriptor{}, fmt.Errorf("read audio project: %w", err)
 	}
+
+	return ParseProjectDescriptor(data)
+}
+
+// ParseProjectDescriptor validates descriptor bytes as ReadProjectDescriptor
+// does, for a caller that reads the file itself.
+func ParseProjectDescriptor(data []byte) (ProjectDescriptor, error) {
 	if len(data) > maxDescriptorBytes {
 		return ProjectDescriptor{}, fmt.Errorf("%w: project descriptor exceeds 1 MiB", ErrLibrary)
 	}
@@ -102,6 +111,28 @@ func ReadProjectDescriptor(path string) (ProjectDescriptor, error) {
 	}
 
 	return descriptor, nil
+}
+
+// EditorOptions turns the descriptor's library policy into options for
+// OpenLibraryProject: its asset root, import directory and targets, and its
+// calibration, by acoustic family where CalibrationFamilies names one.
+func (descriptor ProjectDescriptor) EditorOptions(decode audio.Decoder) EditorOptions {
+	options := DefaultEditorOptions(decode)
+	options.AssetRoot, options.ImportDirectory = descriptor.AssetRoot, descriptor.ImportDirectory
+	options.Targets = cloneAudioValue(descriptor.Targets)
+	families, fallback := cloneAudioValue(descriptor.CalibrationFamilies), DefaultCalibrationOptions()
+	if descriptor.Calibration != nil {
+		fallback = *descriptor.Calibration
+	}
+	options.Calibration = func(family string) CalibrationOptions {
+		if value, exists := families[family]; exists {
+			return value
+		}
+
+		return fallback
+	}
+
+	return options
 }
 
 // LibraryPath resolves the descriptor's library against the directory of the
