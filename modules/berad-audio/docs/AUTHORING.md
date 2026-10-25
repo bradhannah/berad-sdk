@@ -46,6 +46,20 @@ fields, trailing data, unknown categories and calibration targets outside
 [-60,-6] dB, and opens neither the library nor a device. `CueCategory` gives a
 cue's category from the consumer's `CueCategories`, else ambient for a cue with an
 ambient routing profile, else SFX, so every frontend groups cues alike.
+`ParseProjectDescriptor` validates bytes the caller read itself, and
+`EditorOptions` turns a descriptor into `OpenLibraryProject` options, calibrating by
+family as the descriptor names. `CreateProjectDescriptor` writes a descriptor that
+names only its library. `SetDescriptorCueCategory` changes one cue's entry in
+`targets.CueCategories`, keeping every other byte; it refuses with
+`ErrProjectChangedOnDisk` unless the file still holds the bytes the caller read.
+
+`CreateLibrary` writes an empty library and never replaces a file. `CreateCue`
+refuses an existing ID, because cue IDs are references; without a named profile
+it files the cue under `unclassified`, which it adds with every field `unknown`.
+`DeleteCue` takes the cue's profile membership and ambient settings with it and
+refuses while tiles, surfaces, emitters or groups name the cue (`RoutingUses`).
+`DeleteRecording` removes only a recording no cue plays, never its file.
+`SetRecordingProvenance` changes provenance without decoding the source.
 
 Asset roots resolve against the manifest directory. Imports default to `imported/`;
 the consumer may supply destinations and eligibility. These are trusted local
@@ -123,10 +137,17 @@ commit from the candidate the user auditioned.
 
 ## Save, import and recovery
 
-Save preserves untouched entries byte-for-byte. No-op Save preserves the entire
+Save preserves untouched entries byte-for-byte, including when entries are deleted
+and within the taxonomy's sections; new entries start their own line, indented like
+their neighbours. No-op Save preserves the entire
 manifest but still detects external edits. Publication flushes/closes a same-directory
 temporary file before rename. An external-change conflict requires reconciliation,
-not blind overwrite. Save never implicitly commits unfinished frontend drafts.
+not blind overwrite, and is `ErrLibraryChangedOnDisk`; `CheckDisk` reports it
+without saving. Save never implicitly commits unfinished frontend drafts.
+
+`SaveChanged` is Save for a frontend that saves after every edit: it decodes only
+recordings whose file or excerpt changed since the last save, so a missing source
+elsewhere does not block unrelated edits. Save still checks every assigned source.
 
 File facts and authored `Dirty` state are independent. `LastPublication` distinguishes
 `not_published`, `unchanged`, `published`, `published_sync_pending`, with affected

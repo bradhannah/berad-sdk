@@ -18,19 +18,41 @@ type jsonEdit struct {
 	data  []byte
 }
 
+// ErrLibraryChangedOnDisk reports that the manifest's bytes differ from those
+// this editor last read or wrote: another writer replaced it. Reopen the
+// library to continue; this editor's unsaved edits are not merged.
+var ErrLibraryChangedOnDisk = fmt.Errorf("%w: library changed on disk; reopen it before saving", ErrAudioLibrary)
+
 // Save preserves untouched entries verbatim and replaces only edited records.
 // An external change is a conflict even if the local document is not dirty.
 func (e *LibraryEditor) Save() error {
+	return e.save(e.Validate)
+}
+
+// SaveChanged is Save for an editor that saves after every edit. It decodes
+// only the recordings whose file or excerpt changed since the last save, so a
+// missing or broken source elsewhere in the library does not block saving.
+func (e *LibraryEditor) SaveChanged() error {
+	return e.save(e.validateChanged)
+}
+
+// CheckDisk returns ErrLibraryChangedOnDisk when the manifest no longer holds
+// the bytes this editor last read or wrote. It changes nothing.
+func (e *LibraryEditor) CheckDisk() error {
+	return e.checkExternalChange()
+}
+
+func (e *LibraryEditor) save(validate func() error) error {
 	e.beginPublication(e.path, false)
 	unlock, err := e.persistence.lock(e.path)
 	if err != nil {
 		return err
 	}
 
-	return errors.Join(e.saveLocked(), unlock())
+	return errors.Join(e.saveLocked(validate), unlock())
 }
 
-func (e *LibraryEditor) saveLocked() error {
+func (e *LibraryEditor) saveLocked(validate func() error) error {
 	if err := e.checkExternalChange(); err != nil {
 		return err
 	}
@@ -41,7 +63,7 @@ func (e *LibraryEditor) saveLocked() error {
 
 		return err
 	}
-	if err := e.Validate(); err != nil {
+	if err := validate(); err != nil {
 		return err
 	}
 	if !e.Dirty() {
@@ -99,7 +121,28 @@ func (e *LibraryEditor) checkExternalChange() error {
 		return fmt.Errorf("check audio library before save: %w", err)
 	}
 	if !bytes.Equal(current, e.saved) {
-		return fmt.Errorf("%w: library changed on disk; reopen it before saving", ErrAudioLibrary)
+		return ErrLibraryChangedOnDisk
+	}
+
+	return nil
+}
+
+func (e *LibraryEditor) validateChanged() error {
+	if _, err := parseLibraryDocument(encodeAudioValue(e.library), e.validator); err != nil {
+		return err
+	}
+	for recordingID, recording := range e.library.Recordings {
+		if recording.File == nil {
+			continue
+		}
+		saved, exists := e.baseline.Recordings[recordingID]
+		if exists && bytes.Equal(encodeAudioValue(saved.File), encodeAudioValue(recording.File)) &&
+			bytes.Equal(encodeAudioValue(saved.PlaybackWindow), encodeAudioValue(recording.PlaybackWindow)) {
+			continue
+		}
+		if err := e.validateWindow(recording); err != nil {
+			return fmt.Errorf("validate %s selection: %w", recordingID, err)
+		}
 	}
 
 	return nil
@@ -170,8 +213,7 @@ func (e *LibraryEditor) formattedChanges() []byte {
 		edits = append(edits, routingEntryEdits(roots["routing"], e.library.Routing)...)
 	}
 	if !bytes.Equal(encodeAudioValue(e.library.Taxonomy), encodeAudioValue(e.baseline.Taxonomy)) {
-		edits = append(edits, jsonEdit{start: roots["taxonomy"].start, end: roots["taxonomy"].end,
-			data: encodeAudioValue(e.library.Taxonomy)})
+		edits = append(edits, taxonomyEntryEdits(roots["taxonomy"], e.library.Taxonomy)...)
 	}
 	slices.SortFunc(edits, func(a, b jsonEdit) int {
 		if a.start > b.start {
@@ -192,9 +234,9 @@ func entryEdits[T any](root jsonEdit, values map[string]T) []jsonEdit {
 	spans := objectSpans(root.data)
 	for key := range spans {
 		if _, exists := values[key]; !exists {
-			// Deleting an override changes this small object only. Other routing
-			// sections, cues and recording entries retain their original bytes.
-			return []jsonEdit{{start: root.start, end: root.end, data: encodeAudioValue(values)}}
+			// Deleting an entry rewrites this object only, and its other entries
+			// keep their original bytes, as do the other sections.
+			return []jsonEdit{rebuiltObject(root, values)}
 		}
 	}
 	var edits []jsonEdit
@@ -217,13 +259,53 @@ func entryEdits[T any](root jsonEdit, values map[string]T) []jsonEdit {
 		edits = append(edits, jsonEdit{start: root.start + span.start, end: root.start + span.end, data: encoded})
 	}
 	if len(additions) > 0 {
-		prefix := ""
-		if len(spans) > 0 {
-			prefix = ","
-		}
+		edits = append(edits, additionEdit(root, additions))
+	}
+
+	return edits
+}
+
+// additionEdit appends entries after an object's last one, on lines indented
+// like it, or fills an empty object.
+func additionEdit(root jsonEdit, additions []string) jsonEdit {
+	entries := orderedEntries(root.data)
+	if len(entries) == 0 {
 		position := root.end - 1
-		data := []byte(prefix + "\n    " + strings.Join(additions, ",\n    ") + "\n  ")
-		edits = append(edits, jsonEdit{start: position, end: position, data: data})
+		data := []byte("\n    " + strings.Join(additions, ",\n    ") + "\n  ")
+
+		return jsonEdit{start: position, end: position, data: data}
+	}
+	lead := entryLead(root.data, entries, len(entries)-1)
+	position := root.start + entries[len(entries)-1].end
+	data := []byte("," + lead + strings.Join(additions, ","+lead))
+
+	return jsonEdit{start: position, end: position, data: data}
+}
+
+// taxonomyEntryEdits changes the taxonomy's sections entry by entry, unless
+// its set of sections changed.
+func taxonomyEntryEdits(root jsonEdit, taxonomy Taxonomy) []jsonEdit {
+	fields := objectSpans(root.data)
+	names := []string{"recordingFamilies", "cueProfiles", "profiles"}
+	if len(taxonomy.ProfileSearchTerms) > 0 {
+		names = append(names, "profileSearchTerms")
+	}
+	if len(fields) != len(names) {
+		return []jsonEdit{{start: root.start, end: root.end, data: encodeAudioValue(taxonomy)}}
+	}
+	for _, name := range names {
+		field, exists := fields[name]
+		if !exists {
+			return []jsonEdit{{start: root.start, end: root.end, data: encodeAudioValue(taxonomy)}}
+		}
+		field.start, field.end = field.start+root.start, field.end+root.start
+		fields[name] = field
+	}
+	edits := entryEdits(fields["recordingFamilies"], taxonomy.RecordingFamilies)
+	edits = append(edits, entryEdits(fields["cueProfiles"], taxonomy.CueProfiles)...)
+	edits = append(edits, entryEdits(fields["profiles"], taxonomy.Profiles)...)
+	if len(taxonomy.ProfileSearchTerms) > 0 {
+		edits = append(edits, entryEdits(fields["profileSearchTerms"], taxonomy.ProfileSearchTerms)...)
 	}
 
 	return edits

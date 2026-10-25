@@ -392,14 +392,19 @@ func (e *LibraryEditor) SetCueProfile(cueID, profile string) error {
 }
 
 func moveTaxonomyID(groups map[string][]string, identity, target string) {
+	removeTaxonomyID(groups, identity)
+	groups[target] = append(groups[target], identity)
+	slices.Sort(groups[target])
+}
+
+// removeTaxonomyID drops an identity from its group, and the group once empty.
+func removeTaxonomyID(groups map[string][]string, identity string) {
 	for group, ids := range groups {
 		groups[group] = slices.DeleteFunc(ids, func(candidate string) bool { return candidate == identity })
 		if len(groups[group]) == 0 {
 			delete(groups, group)
 		}
 	}
-	groups[target] = append(groups[target], identity)
-	slices.Sort(groups[target])
 }
 
 func (e *LibraryEditor) replace(next *audioLibrary) error {
