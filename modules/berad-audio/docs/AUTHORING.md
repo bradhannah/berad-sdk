@@ -146,8 +146,10 @@ commit from the candidate the user auditioned.
 ## Save, import and recovery
 
 Save preserves untouched entries byte-for-byte, including when entries are deleted
-and within the taxonomy's sections; new entries start their own line, indented like
-their neighbours. No-op Save preserves the entire
+and within the taxonomy's and routing's sections; new entries start their own line,
+indented like their neighbours, or one level deeper than an empty object holding
+them. A routing section the manifest lacks is added after the others rather than
+routing being rewritten. No-op Save preserves the entire
 manifest but still detects external edits. Publication flushes/closes a same-directory
 temporary file before rename. An external-change conflict requires reconciliation,
 not blind overwrite, and is `ErrLibraryChangedOnDisk`; `CheckDisk` reports it
