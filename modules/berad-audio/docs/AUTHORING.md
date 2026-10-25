@@ -36,6 +36,17 @@ cue are distinct. New sections require an explicit future schema revision.
 Consumers also supply tile families/labels and emitter targets; SDK does not discover
 a world, infer target policy from prefixes, or decide which source is active.
 
+`ReadProjectDescriptor` reads version 1 of the project descriptor (`project.json`)
+that tells an editor which library to open and with what consumer policy. It is
+editor configuration, not a second manifest; playback reads only the manifest. Its
+`library` resolves against the descriptor (`LibraryPath`); `assetRoot` and
+`importDirectory` stay library-relative. Nested targets and policies keep the Go
+field names version 1 published. It rejects other versions, duplicate keys, unknown
+fields, trailing data, unknown categories and calibration targets outside
+[-60,-6] dB, and opens neither the library nor a device. `CueCategory` gives a
+cue's category from the consumer's `CueCategories`, else ambient for a cue with an
+ambient routing profile, else SFX, so every frontend groups cues alike.
+
 Asset roots resolve against the manifest directory. Imports default to `imported/`;
 the consumer may supply destinations and eligibility. These are trusted local
 filesystem capabilities, not a symlink-proof sandbox. The editor permits opening
@@ -151,3 +162,13 @@ Authoring regressions live beside `authoring` and use synthetic fixtures; PCM
 mechanism tests live in `internal/pcm`. Consumers test their own vocabulary,
 eligibility, calibration policies and round trips through the public API. Do not
 keep a second authoring implementation in a consumer's test package after cutover.
+
+More than one frontend edits these files: the terminal audio editor, kept for its
+existing consumers, and berad-editor, which is taking over audio editing. Games
+that ship schema-3 libraries, Ultima V Redux among them, read the same files.
+Every frontend reads and writes them only through `authoring`, never with its own
+parser. Schema 3 and descriptor 1 stay readable and writable as they are. A change
+to either is a new version with a step-by-step upgrade, never an edit to the
+current one. `authoring/testdata/format` holds one library and one descriptor using
+every field; its guard test fails when an encoded field is renamed, retyped, added
+or dropped. Change those files only together with a new version.
