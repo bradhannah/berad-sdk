@@ -31,8 +31,14 @@ type Recording struct {
 	Window        *Window
 }
 
+// MaxGain is the largest linear gain a cue or a play request may ask for:
+// +12 dB, the reach of a recording's calibration. Gains above 1 are applied to
+// the decoded samples, so loud enough content can clip; checking headroom is
+// the authoring tool's job.
+const MaxGain = 3.981071705534972
+
 // Cue selects one recording or cycles an ordered nonempty list. Only admitted
-// requests advance selection. Gain is a linear coefficient in [0,1].
+// requests advance selection. Gain is a linear coefficient in [0,MaxGain].
 type Cue struct {
 	Recordings []RecordingID
 	Gain       float64
@@ -121,8 +127,8 @@ func validateDefinition(definition Definition) error {
 
 func validateCues(definition Definition) error {
 	for cueID, cue := range definition.Cues {
-		if cueID == "" || !unitGain(cue.Gain) || len(cue.Recordings) == 0 {
-			return fmt.Errorf("%w: cue %q requires identity, recordings and gain in [0,1]", ErrInvalidLibrary, cueID)
+		if cueID == "" || !boundedGain(cue.Gain) || len(cue.Recordings) == 0 {
+			return fmt.Errorf("%w: cue %q requires identity, recordings and gain in [0,MaxGain]", ErrInvalidLibrary, cueID)
 		}
 		for _, recordingID := range cue.Recordings {
 			recording, exists := definition.Recordings[recordingID]
@@ -156,5 +162,6 @@ func readAsset(files fs.FS, name string, remaining int64) ([]byte, error) {
 	return data, nil
 }
 
-func finite(value float64) bool   { return !math.IsNaN(value) && !math.IsInf(value, 0) }
-func unitGain(value float64) bool { return finite(value) && value >= 0 && value <= 1 }
+func finite(value float64) bool      { return !math.IsNaN(value) && !math.IsInf(value, 0) }
+func unitGain(value float64) bool    { return finite(value) && value >= 0 && value <= 1 }
+func boundedGain(value float64) bool { return finite(value) && value >= 0 && value <= MaxGain }

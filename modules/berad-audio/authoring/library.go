@@ -9,21 +9,26 @@ import (
 	"io/fs"
 	"math"
 	"strings"
+
+	audio "github.com/bradhannah/berad-sdk/modules/berad-audio"
 )
 
 // ErrAudioLibrary is the schema-3 compatibility identity for invalid library data.
 var ErrAudioLibrary = ErrLibrary
 
 // Library schema versions read and written. Schema 3 is the format Ultima V
-// Redux ships; schema 4 adds each recording's commercialUse. A library keeps
-// the version it was read with unless an editor asks for an upgrade.
+// Redux ships; schema 4 adds each recording's commercialUse; schema 5 lets a
+// cue's volumeModifier reach audio.MaxGain, +12 dB, so a cue can play louder
+// than its recordings' calibrated level. A library keeps the version it was
+// read with unless an editor asks for an upgrade.
 const (
 	LibrarySchemaThree   = 3
 	LibrarySchemaFour    = 4
-	LibrarySchemaVersion = LibrarySchemaFour
+	LibrarySchemaFive    = 5
+	LibrarySchemaVersion = LibrarySchemaFive
 )
 
-// LibraryDocument is the detached schema-3 or schema-4 document. Routing wire
+// LibraryDocument is the detached schema-3, 4 or 5 document. Routing wire
 // names are retained; their labels, target identities and policies are consumer-owned.
 type LibraryDocument = audioLibrary
 
@@ -31,7 +36,17 @@ type LibraryDocument = audioLibrary
 // It receives a detached value and cannot mutate the authoritative document.
 type LibraryValidator func(LibraryDocument) error
 
-// ParseDocument validates one schema-3 or schema-4 document without opening its files or an
+// MaxCueGain is the largest volumeModifier a library of a schema allows: 1
+// before schema 5, and audio.MaxGain from it.
+func MaxCueGain(schema int) float64 {
+	if schema >= LibrarySchemaFive {
+		return audio.MaxGain
+	}
+
+	return 1
+}
+
+// ParseDocument validates one schema-3, 4 or 5 document without opening its files or an
 // audio device. The returned maps belong to the caller; validator inputs are
 // detached separately. Disk repair and immutable game loading share this parser.
 func ParseDocument(data []byte, validate LibraryValidator) (LibraryDocument, error) {
@@ -82,9 +97,10 @@ func parseLibraryDocument(data []byte, validate LibraryValidator) (*audioLibrary
 	if err := decoder.Decode(&library); err != nil {
 		return nil, fmt.Errorf("%w: decode: %w", ErrAudioLibrary, err)
 	}
-	if library.SchemaVersion != LibrarySchemaThree && library.SchemaVersion != LibrarySchemaFour ||
+	if library.SchemaVersion < LibrarySchemaThree || library.SchemaVersion > LibrarySchemaFive ||
 		library.Recordings == nil || library.Cues == nil {
-		return nil, fmt.Errorf("%w: require schemaVersion 3 or 4, recordings, cues, taxonomy, and routing", ErrAudioLibrary)
+		return nil, fmt.Errorf("%w: require schemaVersion 3, 4 or 5, recordings, cues, taxonomy, and routing",
+			ErrAudioLibrary)
 	}
 	if err := validateLibraryRecordings(&library); err != nil {
 		return nil, err
@@ -154,6 +170,7 @@ func validateLibraryRecordingMetadata(recordingID string, recording libraryRecor
 }
 
 func validateCoreLibraryCues(library *audioLibrary) error {
+	maxGain := MaxCueGain(library.SchemaVersion)
 	for cueID, cue := range library.Cues {
 		if err := validateSearchTerms(cue.SearchTerms); err != nil {
 			return fmt.Errorf("cue %s: %w", cueID, err)
@@ -166,8 +183,9 @@ func validateCoreLibraryCues(library *audioLibrary) error {
 		}
 		if strings.TrimSpace(cue.Name) == "" || strings.TrimSpace(cue.HowToHear) == "" ||
 			math.IsNaN(cue.VolumeModifier) || math.IsInf(cue.VolumeModifier, 0) ||
-			cue.VolumeModifier < 0 || cue.VolumeModifier > 1 {
-			return fmt.Errorf("%w: cue %s requires name, howToHear, and a gain in [0,1]", ErrAudioLibrary, cueID)
+			cue.VolumeModifier < 0 || cue.VolumeModifier > maxGain {
+			return fmt.Errorf("%w: cue %s requires name, howToHear, and a gain in [0,%.4g] for schema %d",
+				ErrAudioLibrary, cueID, maxGain, library.SchemaVersion)
 		}
 	}
 

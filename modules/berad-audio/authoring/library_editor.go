@@ -128,18 +128,22 @@ func OpenLibraryProject(path string, options EditorOptions) (*LibraryEditor, err
 	return editor, nil
 }
 
-// upgrade moves an opened library to a newer schema. Schema 4 records no
-// recording as cleared for commercial use until its author says so.
+// upgrade moves an opened library to a newer schema, one version at a time.
+// Schema 4 records no recording as cleared for commercial use until its
+// author says so; schema 5 changes no entry, since every gain schema 4 allows
+// schema 5 allows too.
 func (e *LibraryEditor) upgrade(version int) error {
 	if version == 0 || version == e.library.SchemaVersion {
 		return nil
 	}
-	if version != LibrarySchemaFour || e.library.SchemaVersion > version {
+	if version < LibrarySchemaFour || version > LibrarySchemaFive || e.library.SchemaVersion > version {
 		return fmt.Errorf("%w: cannot move schema %d to %d", ErrAudioLibrary, e.library.SchemaVersion, version)
 	}
 	next := cloneAudioValue(e.library)
-	next.SchemaVersion = version
-	fillCommercialUse(next)
+	for next.SchemaVersion < version {
+		next.SchemaVersion++
+		fillCommercialUse(next)
+	}
 	if _, err := parseLibraryDocument(encodeAudioValue(next), e.validator); err != nil {
 		return err
 	}
@@ -148,9 +152,9 @@ func (e *LibraryEditor) upgrade(version int) error {
 	return nil
 }
 
-// fillCommercialUse records "not cleared" for each schema-4 recording that has
-// no answer yet, such as a new slot or an import from a frontend that does not
-// ask, so every schema-4 edit stays valid.
+// fillCommercialUse records "not cleared" for each recording of schema 4 or
+// later that has no answer yet, such as a new slot or an import from a
+// frontend that does not ask, so every such edit stays valid.
 func fillCommercialUse(library *audioLibrary) {
 	if library.SchemaVersion < LibrarySchemaFour {
 		return

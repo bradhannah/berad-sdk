@@ -12,7 +12,7 @@ import (
 // a cue and its ambient settings are added: each entry on its own line,
 // indented one level deeper than the object holding it.
 const grownLibrary = `{
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "recordings": {
     "hum": {"file":null,"provenance":{"originalFilename":"unknown","sourceType":"unknown",` +
 	`"sourceUrl":"unknown","sourceCreator":"unknown","license":"unknown","importedFrom":"unknown",` +

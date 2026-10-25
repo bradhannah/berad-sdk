@@ -214,13 +214,16 @@ func (reader analysisReader) Read(buffer []byte) (int, error) {
 	return reader.source.Read(buffer) //nolint:wrapcheck // io.Reader requires the decoder's exact EOF sentinel.
 }
 
+// suggestionThreshold is the -40 dB peak below which a bucket counts as
+// silence for suggested windows.
+const suggestionThreshold = 0.01
+
 // SuggestedWindow proposes -40 dB boundaries with one bucket of edge padding.
 // It never changes the document. All-silent files have no useful suggestion.
 func (clip *RecordingAudio) SuggestedWindow() (*PlaybackWindow, bool) {
-	const threshold = 0.01
 	first, last := -1, -1
 	for index, peak := range clip.peaks {
-		if peak >= threshold {
+		if peak >= suggestionThreshold {
 			if first == -1 {
 				first = index
 			}
@@ -230,9 +233,51 @@ func (clip *RecordingAudio) SuggestedWindow() (*PlaybackWindow, bool) {
 	if first < 0 {
 		return nil, false
 	}
+
+	return clip.paddedWindow(first, last), true
+}
+
+// SuggestedWindows proposes one window for each sound in the recording: a run
+// of -40 dB peaks that silence of at least minimumSilenceMs separates from the
+// next, each padded as SuggestedWindow pads. Shorter silences stay inside a
+// sound, so the gaps of a footstep's scuff do not split it. Windows are in
+// order and never overlap; an all-silent file has none. It never changes the
+// document.
+func (clip *RecordingAudio) SuggestedWindows(minimumSilenceMs int64) []PlaybackWindow {
+	gap := max(1, int((minimumSilenceMs+WaveformBucketMs-1)/WaveformBucketMs))
+	var windows []PlaybackWindow
+	first, last := -1, -1
+	for index, peak := range clip.peaks {
+		if peak < suggestionThreshold {
+			continue
+		}
+		if first >= 0 && index-last-1 >= gap {
+			windows = append(windows, *clip.paddedWindow(first, last))
+			first = -1
+		}
+		if first < 0 {
+			first = index
+		}
+		last = index
+	}
+	if first >= 0 {
+		windows = append(windows, *clip.paddedWindow(first, last))
+	}
+	for index := 1; index < len(windows); index++ {
+		// Padding never makes neighbours overlap: the later one starts where
+		// the earlier one ends at the latest.
+		windows[index].StartMs = max(windows[index].StartMs, windows[index-1].EndMs)
+	}
+
+	return windows
+}
+
+// paddedWindow is the window from the first to the last audible bucket, one
+// bucket of padding either side, inside the recording.
+func (clip *RecordingAudio) paddedWindow(first, last int) *PlaybackWindow {
 	start := int64(max(0, first-1)) * WaveformBucketMs
 	const endPaddingBuckets = 2 // End of the last audible bucket plus one padding bucket.
 	end := min(clip.durationMs, int64(last+endPaddingBuckets)*WaveformBucketMs)
 
-	return &PlaybackWindow{StartMs: start, EndMs: end}, end > start
+	return &PlaybackWindow{StartMs: start, EndMs: end}
 }

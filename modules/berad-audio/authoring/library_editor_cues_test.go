@@ -143,7 +143,7 @@ func TestCreateLibraryThenBuildIt(t *testing.T) {
 	require.Equal(t, []string{"sfx/chime"}, reopened.CueIDs())
 	saved, err := os.ReadFile(path)
 	require.NoError(t, err)
-	require.True(t, bytes.HasPrefix(saved, []byte("{\n  \"schemaVersion\": 4,\n")))
+	require.True(t, bytes.HasPrefix(saved, []byte("{\n  \"schemaVersion\": 5,\n")))
 	require.False(t, reopened.Recording("chime").Provenance.CommercialUseAllowed(), "a new slot is not cleared")
 	require.Equal(t, 1, strings.Count(string(saved), "\"sfx/chime\": {"))
 }
