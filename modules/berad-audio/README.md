@@ -188,7 +188,7 @@ document/project layer described below, not this source-file API.
 
 Immutable source methods can be called concurrently if the supplied decoder itself
 supports independent concurrent calls. Stream operations remain caller-serialized.
-`OpenLibraryProject(path, EditorOptions)` opens a disk-backed schema-3 project with
+`OpenLibraryProject(path, EditorOptions)` opens a disk-backed schema-3 or schema-4 project with
 explicit decoder and calibration callbacks. Optional consumer validation receives
 detached metadata; it owns completeness, vocabulary and target eligibility.
 `DefaultEditorOptions` supplies the generic active-RMS policy for a given decoder;
@@ -214,7 +214,10 @@ interpreting them as game policy. Consumer descriptors supply their labels,
 arbitrary target identities and any default target used for inheritance. Missing
 targets, explicit null/silence, and concrete cues remain distinct. Additional wire
 sections require an explicit future schema revision; the initial extraction does
-not silently extend schema 3. Structural validation rejects duplicate JSON keys,
+not silently extend schema 3. Schema 4 adds only each recording's
+`provenance.commercialUse`; a schema-3 library stays schema 3 unless an editor asks
+to upgrade it ([authoring contract](docs/AUTHORING.md#document-and-policy-boundaries)).
+Structural validation rejects duplicate JSON keys,
 unknown fields/sections, invalid references and malformed numbers. Consumer
 validation adds vocabulary, completeness and target eligibility.
 
