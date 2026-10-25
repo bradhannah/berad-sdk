@@ -207,18 +207,18 @@ func objectSpans(data []byte) map[string]jsonEdit {
 
 func (e *LibraryEditor) formattedChanges() []byte {
 	roots := objectSpans(e.saved)
-	edits := entryEdits(roots["recordings"], e.library.Recordings)
+	edits := entryEdits(e.saved, roots["recordings"], e.library.Recordings)
 	if e.library.SchemaVersion != e.baseline.SchemaVersion {
 		version := roots["schemaVersion"]
 		edits = append(edits, jsonEdit{start: version.start, end: version.end,
 			data: encodeAudioValue(e.library.SchemaVersion)})
 	}
-	edits = append(edits, entryEdits(roots["cues"], e.library.Cues)...)
+	edits = append(edits, entryEdits(e.saved, roots["cues"], e.library.Cues)...)
 	if !bytes.Equal(encodeAudioValue(e.library.Routing), encodeAudioValue(e.baseline.Routing)) {
-		edits = append(edits, routingEntryEdits(roots["routing"], e.library.Routing)...)
+		edits = append(edits, routingEntryEdits(e.saved, roots["routing"], e.library.Routing)...)
 	}
 	if !bytes.Equal(encodeAudioValue(e.library.Taxonomy), encodeAudioValue(e.baseline.Taxonomy)) {
-		edits = append(edits, taxonomyEntryEdits(roots["taxonomy"], e.library.Taxonomy)...)
+		edits = append(edits, taxonomyEntryEdits(e.saved, roots["taxonomy"], e.library.Taxonomy)...)
 	}
 	slices.SortFunc(edits, func(a, b jsonEdit) int {
 		if a.start > b.start {
@@ -235,13 +235,15 @@ func (e *LibraryEditor) formattedChanges() []byte {
 	return result
 }
 
-func entryEdits[T any](root jsonEdit, values map[string]T) []jsonEdit {
+// entryEdits changes an object of the saved document entry by entry; root
+// holds its place in document.
+func entryEdits[T any](document []byte, root jsonEdit, values map[string]T) []jsonEdit {
 	spans := objectSpans(root.data)
 	for key := range spans {
 		if _, exists := values[key]; !exists {
 			// Deleting an entry rewrites this object only, and its other entries
 			// keep their original bytes, as do the other sections.
-			return []jsonEdit{rebuiltObject(root, values)}
+			return []jsonEdit{rebuiltObject(lineIndent(document, root.start), root, values)}
 		}
 	}
 	var edits []jsonEdit
@@ -264,19 +266,20 @@ func entryEdits[T any](root jsonEdit, values map[string]T) []jsonEdit {
 		edits = append(edits, jsonEdit{start: root.start + span.start, end: root.start + span.end, data: encoded})
 	}
 	if len(additions) > 0 {
-		edits = append(edits, additionEdit(root, additions))
+		edits = append(edits, additionEdit(lineIndent(document, root.start), root, additions))
 	}
 
 	return edits
 }
 
 // additionEdit appends entries after an object's last one, on lines indented
-// like it, or fills an empty object.
-func additionEdit(root jsonEdit, additions []string) jsonEdit {
+// like it, or fills an empty object whose line is indented by indent.
+func additionEdit(indent string, root jsonEdit, additions []string) jsonEdit {
 	entries := orderedEntries(root.data)
 	if len(entries) == 0 {
 		position := root.end - 1
-		data := []byte("\n    " + strings.Join(additions, ",\n    ") + "\n  ")
+		lead := "\n" + indent + jsonIndent
+		data := []byte(lead + strings.Join(additions, ","+lead) + "\n" + indent)
 
 		return jsonEdit{start: position, end: position, data: data}
 	}
@@ -289,7 +292,7 @@ func additionEdit(root jsonEdit, additions []string) jsonEdit {
 
 // taxonomyEntryEdits changes the taxonomy's sections entry by entry, unless
 // its set of sections changed.
-func taxonomyEntryEdits(root jsonEdit, taxonomy Taxonomy) []jsonEdit {
+func taxonomyEntryEdits(document []byte, root jsonEdit, taxonomy Taxonomy) []jsonEdit {
 	fields := objectSpans(root.data)
 	names := []string{"recordingFamilies", "cueProfiles", "profiles"}
 	if len(taxonomy.ProfileSearchTerms) > 0 {
@@ -306,47 +309,84 @@ func taxonomyEntryEdits(root jsonEdit, taxonomy Taxonomy) []jsonEdit {
 		field.start, field.end = field.start+root.start, field.end+root.start
 		fields[name] = field
 	}
-	edits := entryEdits(fields["recordingFamilies"], taxonomy.RecordingFamilies)
-	edits = append(edits, entryEdits(fields["cueProfiles"], taxonomy.CueProfiles)...)
-	edits = append(edits, entryEdits(fields["profiles"], taxonomy.Profiles)...)
+	edits := entryEdits(document, fields["recordingFamilies"], taxonomy.RecordingFamilies)
+	edits = append(edits, entryEdits(document, fields["cueProfiles"], taxonomy.CueProfiles)...)
+	edits = append(edits, entryEdits(document, fields["profiles"], taxonomy.Profiles)...)
 	if len(taxonomy.ProfileSearchTerms) > 0 {
-		edits = append(edits, entryEdits(fields["profileSearchTerms"], taxonomy.ProfileSearchTerms)...)
+		edits = append(edits, entryEdits(document, fields["profileSearchTerms"], taxonomy.ProfileSearchTerms)...)
 	}
 
 	return edits
 }
 
-func routingEntryEdits(root jsonEdit, routing Routing) []jsonEdit {
+// routingSection is one of routing's sections: its name, its entries as
+// each would be saved, and how to change the section the file holds.
+type routingSection struct {
+	name    string
+	entries map[string]json.RawMessage
+	edit    func(field jsonEdit) []jsonEdit
+}
+
+// sectionOf describes a routing section of document.
+func sectionOf[T any](document []byte, name string, values map[string]T) routingSection {
+	entries := make(map[string]json.RawMessage, len(values))
+	for id, value := range values {
+		entries[id] = encodeAudioValue(value)
+	}
+
+	return routingSection{name: name, entries: entries, edit: func(field jsonEdit) []jsonEdit {
+		return entryEdits(document, field, values)
+	}}
+}
+
+// routingEntryEdits changes routing's sections entry by entry. A section the
+// file lacks is added after the others, laid out like them, when it has
+// entries or a default surface. A section the file holds as null, or one
+// routing no longer has, rewrites routing whole.
+func routingEntryEdits(document []byte, root jsonEdit, routing Routing) []jsonEdit {
 	fields := objectSpans(root.data)
-	encoded := encodeAudioValue(routing)
-	const fixedSections = 5
-	sections := make([]string, 0, fixedSections+len(routing.Groups))
-	sections = append(sections, routingAmbientKey, routingTilesKey, routingSurfacesKey,
-		routingEmittersKey, routingDefaultSurfaceKey)
-	for group := range routing.Groups {
-		sections = append(sections, group)
+	const fixedSections = 4
+	sections := make([]routingSection, 0, fixedSections+len(routing.Groups))
+	sections = append(sections,
+		sectionOf(document, routingAmbientKey, routing.Ambient), sectionOf(document, routingTilesKey, routing.Tiles),
+		sectionOf(document, routingSurfacesKey, routing.Surfaces),
+		sectionOf(document, routingEmittersKey, routing.Emitters))
+	for _, group := range sortedKeys(routing.Groups) {
+		sections = append(sections, sectionOf(document, group, routing.Groups[group]))
 	}
-	if len(fields) != len(sections) {
-		return []jsonEdit{{start: root.start, end: root.end, data: encoded}}
+	known := map[string]bool{routingDefaultSurfaceKey: true}
+	for _, section := range sections {
+		known[section.name] = true
 	}
-	for _, name := range sections {
-		field, exists := fields[name]
-		if !exists || bytes.Equal(bytes.TrimSpace(field.data), []byte("null")) {
-			return []jsonEdit{{start: root.start, end: root.end, data: encoded}}
+	for name, field := range fields {
+		if !known[name] || bytes.Equal(bytes.TrimSpace(field.data), []byte("null")) {
+			return []jsonEdit{{start: root.start, end: root.end, data: encodeAudioValue(routing)}}
+		}
+	}
+	indent := lineIndent(document, root.start)
+	var edits []jsonEdit
+	var additions []string
+	for _, section := range sections {
+		field, exists := fields[section.name]
+		if !exists {
+			if len(section.entries) > 0 {
+				additions = append(additions, string(encodeAudioValue(section.name))+": "+
+					indentedObject(indent+jsonIndent, section.entries))
+			}
+
+			continue
 		}
 		field.start, field.end = field.start+root.start, field.end+root.start
-		fields[name] = field
+		edits = append(edits, section.edit(field)...)
 	}
-	edits := entryEdits(fields[routingAmbientKey], routing.Ambient)
-	edits = append(edits, entryEdits(fields[routingTilesKey], routing.Tiles)...)
-	edits = append(edits, entryEdits(fields[routingSurfacesKey], routing.Surfaces)...)
-	edits = append(edits, entryEdits(fields[routingEmittersKey], routing.Emitters)...)
-	for group, assignments := range routing.Groups {
-		edits = append(edits, entryEdits(fields[group], assignments)...)
+	value := encodeAudioValue(routing.DefaultSurface)
+	if field, exists := fields[routingDefaultSurfaceKey]; exists && !bytes.Equal(field.data, value) {
+		edits = append(edits, jsonEdit{start: field.start + root.start, end: field.end + root.start, data: value})
+	} else if !exists && routing.DefaultSurface != "" {
+		additions = append(additions, string(encodeAudioValue(routingDefaultSurfaceKey))+": "+string(value))
 	}
-	field := fields[routingDefaultSurfaceKey]
-	if value := encodeAudioValue(routing.DefaultSurface); !bytes.Equal(field.data, value) {
-		edits = append(edits, jsonEdit{start: field.start, end: field.end, data: value})
+	if len(additions) > 0 {
+		edits = append(edits, additionEdit(indent, root, additions))
 	}
 
 	return edits

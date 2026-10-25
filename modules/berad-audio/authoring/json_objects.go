@@ -46,6 +46,29 @@ func orderedEntries(data []byte) []objectEntry {
 	return entries
 }
 
+// jsonIndent is how much deeper each level of a saved document is indented.
+const jsonIndent = "  "
+
+// lineIndent is the whitespace that begins the line holding offset.
+func lineIndent(document []byte, offset int64) string {
+	start := bytes.LastIndexByte(document[:offset], '\n') + 1
+	line := document[start:offset]
+
+	return string(line[:len(line)-len(bytes.TrimLeft(line, " \t"))])
+}
+
+// indentedObject lays an object's entries out one to a line, in key order,
+// for an object whose line is indented by indent.
+func indentedObject(indent string, entries map[string]json.RawMessage) string {
+	lines := make([]string, 0, len(entries))
+	for _, id := range sortedKeys(entries) {
+		lines = append(lines, string(encodeAudioValue(id))+": "+string(entries[id]))
+	}
+	lead := "\n" + indent + jsonIndent
+
+	return "{" + lead + strings.Join(lines, ","+lead) + "\n" + indent + "}"
+}
+
 // entryLead is the whitespace that begins an entry's line, after any comma.
 func entryLead(data []byte, entries []objectEntry, index int) string {
 	from := int64(1)
@@ -60,7 +83,8 @@ func entryLead(data []byte, entries []objectEntry, index int) string {
 // rebuiltObject rewrites an object some entries left: kept entries keep their
 // exact text, changed ones are re-encoded after their original key, new ones
 // follow in key order, and the original spacing between entries is reused.
-func rebuiltObject[T any](root jsonEdit, values map[string]T) jsonEdit {
+// An object that had no entries is laid out for a line indented by indent.
+func rebuiltObject[T any](indent string, root jsonEdit, values map[string]T) jsonEdit {
 	entries := orderedEntries(root.data)
 	parts := make([]string, 0, len(values))
 	seen := make(map[string]bool, len(entries))
@@ -78,7 +102,7 @@ func rebuiltObject[T any](root jsonEdit, values map[string]T) jsonEdit {
 	if len(parts) == 0 {
 		return jsonEdit{start: root.start, end: root.end, data: []byte("{}")}
 	}
-	opening, closing := "\n    ", "\n  "
+	opening, closing := "\n"+indent+jsonIndent, "\n"+indent
 	if len(entries) > 0 {
 		opening = entryLead(root.data, entries, 0)
 		closing = string(root.data[entries[len(entries)-1].end : len(root.data)-1])
