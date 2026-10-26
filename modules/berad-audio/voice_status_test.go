@@ -42,6 +42,20 @@ func TestVoiceReportsDistinctTerminalReasons(t *testing.T) {
 	}
 }
 
+func TestLoopingVoicePositionWrapsWithinItsRegion(t *testing.T) {
+	state := newFixture(t, 1, 1)
+	options := audio.DefaultPlayOptions()
+	options.Loop = true
+	handle := play(t, state.runtime, options)
+	state.backend.players[0].position = 5 * time.Millisecond
+	if status := handle.Status(); status.Position != time.Millisecond || status.Duration != 2*time.Millisecond {
+		t.Fatal("a loop's position did not wrap to where it has reached", status)
+	}
+	if snapshot := state.runtime.Snapshot(); len(snapshot) != 1 || snapshot[0].Position != time.Millisecond {
+		t.Fatal("a loop's snapshot position did not wrap", snapshot)
+	}
+}
+
 func TestVoiceStatusObservesBoundedPositionWithoutServicingFade(t *testing.T) {
 	state := newFixture(t, 1, 1)
 	options := audio.DefaultPlayOptions()

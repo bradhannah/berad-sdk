@@ -111,6 +111,7 @@ result, err := owner.Play("hangar/motor", request)
   Unexpected loop completion is a failure, unlike healthy finite completion.
   Live status includes bounded position/duration, request/source coefficients and
   envelope, so consumer diagnostics need not reconstruct factors from a muted mix.
+  A looping voice's position wraps to where the loop has reached in its region.
 - Admission evicts the oldest finite voice; loops are protected. A new finite
   voice is dropped when all slots are loops; a new loop returns `ErrVoiceLimit`.
   Failed/dropped requests never advance the recording cycle.
