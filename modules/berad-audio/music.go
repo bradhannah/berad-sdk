@@ -206,8 +206,16 @@ func (music *MusicPlayer) Snapshot() MusicSnapshot {
 	return result
 }
 
+// boundedPosition keeps a position within a voice's region. A looping voice's
+// transport keeps counting past the region's end, so its position wraps to
+// where the loop has reached.
 func boundedPosition(playing *voice, rate int, position time.Duration) time.Duration {
-	return max(0, min(position, voiceDuration(playing, rate)))
+	duration := voiceDuration(playing, rate)
+	if playing.loop && duration > 0 && position >= duration {
+		position %= duration
+	}
+
+	return max(0, min(position, duration))
 }
 
 func voiceDuration(playing *voice, rate int) time.Duration {
