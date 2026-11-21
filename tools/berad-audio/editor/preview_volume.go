@@ -189,14 +189,15 @@ func (m *model) previewRouteLabel(recordingID, cueID string) string {
 	return fmt.Sprintf("%s %d/10", category.label(), m.previewSliders[category])
 }
 
-func (m *model) previewVolumeStrip(width int) string {
+// previewVolumeStrip is the playback line's reminder of what the levels are.
+func (m *model) previewVolumeStrip() string {
+	key := "  " + m.colors.hintKey.Render("v")
 	if m.referencePreview {
-		return fit(m.colors.focus.Render("REFERENCE · calibrated source ×1 · v controls"), width)
+		return m.colors.warning.Render("REFERENCE") + m.colors.dim.Render(" no game volume") + key
 	}
 
-	return fit(m.colors.focus.Render(fmt.Sprintf("%s · Music %d/10 · SFX %d/10 · Amb %d/10 · v controls",
-		m.options.MixLabel, m.previewSliders[previewMusic], m.previewSliders[previewSFX],
-		m.previewSliders[previewAmbience])), width)
+	return m.colors.dim.Render(m.options.MixLabel) + fmt.Sprintf(" Music %d · SFX %d · Ambience %d",
+		m.previewSliders[previewMusic], m.previewSliders[previewSFX], m.previewSliders[previewAmbience]) + key
 }
 
 func (m *model) previewVolumeLines(width int) []string {

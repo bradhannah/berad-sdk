@@ -78,7 +78,7 @@ func TestLicenseDialogUsesSelectedMomentVariantAndSupportsEmptySlots(t *testing.
 	finish(m, m.commitInput())
 	require.Equal(t, "Documented custom license", m.doc.Recording("healing_02").Provenance.License)
 	require.Equal(t, previousLicense, m.doc.Recording("healing_01").Provenance.License)
-	require.Contains(t, strings.Join(m.detailLines(80), "\n"), "License [Ctrl+L]")
+	require.Contains(t, ansi.Strip(strings.Join(m.detailLines(80), "\n")), "License Documented custom license")
 	finish(m, m.selectWorkspace(workspaceRecordings))
 	m.selectID("fountain_drink_01")
 	finish(m, m.loadSelection())

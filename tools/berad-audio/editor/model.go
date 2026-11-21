@@ -114,10 +114,11 @@ type model struct {
 	infoDialog          *editorInfo
 	previewPaused       bool
 	previewLoop         bool
-	previewEndMs        int64
 	picker              *filePicker
 	assigning           bool
 	assignmentCue       string
+	lastPickerDirectory string
+	replaceConfirmed    string
 	fullSource, looping bool
 	autoPreview         bool
 	position            int64
@@ -143,6 +144,9 @@ type model struct {
 	filter              availabilityFilter
 	scanGeneration      uint64
 	scanQueue           []string
+	scanTotal, scanDone int
+	scanActive          int
+	scanContext         func() context.Context
 	cancelScan          context.CancelFunc
 	workspaceState      [workspaceCount]browseState
 	assignmentState     browseState
@@ -158,6 +162,22 @@ type model struct {
 	autoGainDraft       *calibrationDraft
 	calibrationCache    *calibrationCache
 	routing             routingEditor
+	detailsFull         bool
+	searchBefore        string
+	gainRun             gainRun
+	cueOrder            cueOrder
+}
+
+type cueOrder struct {
+	doc      *audio.LibraryEditor
+	revision uint64
+	ids      []string
+}
+
+// gainRun remembers the last +/- step so a run of them is one Undo entry.
+type gainRun struct {
+	identity string
+	revision uint64
 }
 
 func newModel(doc *audio.LibraryEditor, selected ...Options) *model {
@@ -170,6 +190,9 @@ func newModel(doc *audio.LibraryEditor, selected ...Options) *model {
 	editor.doc, editor.preview = doc, audition.NewVoice()
 	editor.width, editor.height = defaultWidth, defaultHeight
 	editor.previewSliders = [previewCategoryCount]int{defaultPreviewSlider, defaultPreviewSlider, defaultAmbientSlider}
+	if levels := editor.options.InitialSliders; levels != nil {
+		editor.previewSliders = [previewCategoryCount]int{levels.Music, levels.SFX, levels.Ambience}
+	}
 	editor.recordingCategory = previewCategoryAuto
 	editor.now = time.Now
 	editor.newVoice = newVoice
@@ -179,7 +202,6 @@ func newModel(doc *audio.LibraryEditor, selected ...Options) *model {
 	editor.routing.tiles = editor.targets.Tiles
 	editor.routing.selected = make(map[string]bool)
 	editor.prepareAvailability()
-	editor.status = "Enter: play selection. f: choose file. Ctrl+s: save the real manifest."
 	editor.refreshKeys()
 
 	return editor
@@ -198,6 +220,8 @@ func Run(doc *audio.LibraryEditor, options Options) error {
 		return err
 	}
 	m := newModel(doc, options)
+	m.workspace = workspaceMoments // Open on what the game plays; Recordings is the file bin.
+	m.refreshKeys()
 	defer m.close()
 	_, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	if err != nil {
@@ -390,10 +414,6 @@ func (m *model) playStandalone() bool {
 		}
 		m.status = "Playing " + m.previewLabel
 		m.previewPaused, m.previewLoop = false, m.looping
-		m.previewEndMs = m.clip.DurationMs()
-		if window != nil {
-			m.previewEndMs = window.EndMs
-		}
 	}
 	m.report(err)
 

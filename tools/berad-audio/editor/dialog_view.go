@@ -10,6 +10,8 @@ import (
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
+// editorDialog.focus is the row kept visible; scrollFrom(top) instead pins the
+// first visible wrapped row, for dialogs that scroll rather than track a cursor.
 type editorDialog struct {
 	title string
 	rows  []string
@@ -17,7 +19,16 @@ type editorDialog struct {
 	help  []string
 }
 
+func scrollFrom(top int) int { return -top - 1 }
+
+type dialogLayout struct {
+	rows, help []string
+	focus      int
+	capacity   int
+}
+
 const (
+	maxDialogWidth     = 84 // Mirrors the width view.go gives every dialog.
 	editorDialogMargin = 4
 	dialogHeaderRows   = 2
 	inputPadding       = 4
@@ -30,12 +41,6 @@ func (m *model) inlineInput() bool {
 	default:
 		return false
 	}
-}
-
-func (m *model) inputLines(width int) []string {
-	rows, _ := m.inputRows(width)
-
-	return rows
 }
 
 func (m *model) inputRows(width int) ([]string, int) {
@@ -99,8 +104,8 @@ func (m *model) dialogContent(width int) (editorDialog, bool) {
 	case ownerField:
 		return m.fieldDialog(width)
 	case ownerInfo:
-		return editorDialog{title: m.infoDialog.title, rows: m.infoDialog.lines, focus: m.infoDialog.scroll,
-			help: []string{"Up/Down: scroll   Enter/Escape: close"}}, true
+		return editorDialog{title: m.infoDialog.title, rows: m.infoDialog.lines, focus: scrollFrom(m.infoDialog.scroll),
+			help: []string{"Up/Down/PgUp/PgDn/Home/End: scroll   Enter/Escape: close"}}, true
 	case ownerVolumes:
 		return m.volumeDialog(width)
 	case ownerRoutingPicker:
@@ -334,8 +339,8 @@ func (m *model) filePickerDialog(width int) editorDialog {
 			"Enter: open/import   Space: preview/pause   /: path   Escape: cancel"}}
 }
 
-func (m *model) overlayDialog(background string, dialog editorDialog, width int) string {
-	maxHeight := m.height - editorDialogMargin
+// layoutDialog wraps a dialog to its panel width and computes how many rows fit.
+func (m *model) layoutDialog(dialog editorDialog, width int) dialogLayout {
 	help := make([]string, 0, len(dialog.help))
 	for _, line := range dialog.help {
 		help = append(help, strings.Split(ansi.Wrap(line, width-panelEdges, ""), "\n")...)
@@ -348,9 +353,19 @@ func (m *model) overlayDialog(background string, dialog editorDialog, width int)
 		}
 		wrapped = append(wrapped, strings.Split(ansi.Wrap(line, width-panelEdges, ""), "\n")...)
 	}
-	capacity := max(1, maxHeight-panelEdges-len(help)-1)
-	height := min(maxHeight, len(wrapped)+panelEdges+len(help)+1)
-	start := listViewportStart(0, focus, len(wrapped), capacity)
+	capacity := max(1, m.height-editorDialogMargin-panelEdges-len(help)-1)
+
+	return dialogLayout{rows: wrapped, help: help, focus: focus, capacity: capacity}
+}
+
+func (m *model) overlayDialog(background string, dialog editorDialog, width int) string {
+	layout := m.layoutDialog(dialog, width)
+	wrapped, help, capacity := layout.rows, layout.help, layout.capacity
+	height := min(m.height-editorDialogMargin, len(wrapped)+panelEdges+len(help)+1)
+	start := listViewportStart(0, layout.focus, len(wrapped), capacity)
+	if dialog.focus < 0 {
+		start = max(0, min(-dialog.focus-1, len(wrapped)-capacity))
+	}
 	rows := append([]string(nil), wrapped[start:min(len(wrapped), start+capacity)]...)
 	rows = append(rows, "")
 	rows = append(rows, help...)

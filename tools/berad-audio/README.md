@@ -50,8 +50,8 @@ native/device observations or constitute listening acceptance.
 
 Applications can call `editor.Run(document, options)` (the current package name is
 `editorui`; use an explicit import alias). The document comes from the SDK authoring
-package. Options supply slider gain, unassigned-recording category, target eligibility
-and help, ambient-creation defaults and save notices. Cue categories and group
+package. Options supply slider gain, initial preview slider levels, unassigned-recording
+category, target eligibility and help, ambient-creation defaults and save notices. Cue categories and group
 labels/targets come from the document's detached AuthoringTargets. Prefixes and
 special game target names do not select playback or picker eligibility.
 

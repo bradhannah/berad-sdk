@@ -195,7 +195,7 @@ func (m *model) editCalibrationTarget() {
 	if saved := m.doc.Recording(m.recordingID()).CalibrationTargetDB; saved != nil {
 		target = *saved
 	}
-	m.beginInput(fieldCalibrationTarget, strconv.FormatFloat(target, 'f', 1, 64))
+	m.beginValueInput(fieldCalibrationTarget, strconv.FormatFloat(target, 'f', 1, 64))
 }
 
 func (m *model) setCalibrationTarget(value string) {

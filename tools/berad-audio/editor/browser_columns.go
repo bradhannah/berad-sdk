@@ -2,7 +2,6 @@ package editorui
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -11,139 +10,221 @@ import (
 )
 
 const (
-	compactStatusWidth     = 2
-	fullStatusThreshold    = 70
-	fullFamilyThreshold    = 90
-	extraColumnThreshold   = 40
-	compactFamilyWidth     = 10
-	fullFamilyWidth        = 24
-	calibrationColumnWidth = 8
-	usesColumnWidth        = 4
-	columnGap              = 1
-	columnSplit            = 2
-	momentColumnGaps       = 2
-	recordingColumnGaps    = 3
-	mismatchMarkerWidth    = 2
-	targetColumnTitle      = "Target"
+	compactStatusWidth   = 2
+	extraColumnThreshold = 40
+	columnGap            = 1
+	columnSplit          = 2
+	momentColumnGaps     = 2
+	listPrefixWidth      = 3
+	narrowListWidth      = 30
+	mediumListWidth      = 48
+	levelColumnWidth     = 10
+	volumeColumnWidth    = 5
+	kindColumnWidth      = 8
+	playsShare           = 2
+	playsParts           = 5
+	editedSuffix         = " *"
+	nothingAssigned      = "—"
 )
 
-type browserColumns struct {
-	status, name, family, calibration, uses, assignment int
+type listField int
+
+const (
+	listName listField = iota
+	listPlays
+	listLevel
+	listSound
+	listVolume
+	listKind
+)
+
+type listColumn struct {
+	field listField
+	title string
+	width int
+	right bool
 }
 
-func (m *model) columnsForWidth(width int) browserColumns {
-	var columns browserColumns
-	columns.status, columns.family = compactStatusWidth, compactFamilyWidth
-	if width >= fullStatusThreshold {
-		columns.status = badgeWidth
-	}
-	if width >= fullFamilyThreshold {
-		columns.family = fullFamilyWidth
-	}
-	remaining := max(0, width-rowPrefixWidth-columns.status)
-	if width < extraColumnThreshold {
-		columns.family = min(columns.family, remaining/columnSplit)
-		columns.name = max(0, remaining-columns.family-columnGap)
-
-		return columns
-	}
+// Narrow panes drop the trailing columns first; the name always stays.
+func (m *model) listColumns(width int) []listColumn {
+	usable := max(0, width-listPrefixWidth-columnGap)
 	if m.browsingCues() {
-		columns.family += mismatchMarkerWidth
-		remaining -= columns.family + momentColumnGaps*columnGap
-		columns.assignment = remaining / columnSplit
-		columns.name = remaining - columns.assignment
-	} else {
-		columns.calibration, columns.uses = calibrationColumnWidth, usesColumnWidth
-		columns.name = remaining - columns.family - columns.calibration - columns.uses - recordingColumnGaps*columnGap
+		return momentColumns(usable)
 	}
 
-	return columns
+	return recordingColumns(usable)
 }
 
-func (m *model) columnHeader(width int) string {
-	columns := m.columnsForWidth(width)
-	state, name, family := "State", "Recording ID", "Family"
-	if columns.status == compactStatusWidth {
-		state = "S"
+func recordingColumns(usable int) []listColumn {
+	name := listColumn{field: listName, title: "Sound file", width: usable, right: false}
+	level := listColumn{field: listLevel, title: "Level dB", width: levelColumnWidth, right: true}
+	if usable < narrowListWidth {
+		return []listColumn{name}
 	}
-	if m.browsingCues() {
-		name, family = "Moment", targetColumnTitle
-	}
-	parts := []string{fit(name, columns.name), fit(family, columns.family)}
-	if columns.calibration > 0 {
-		parts = append(parts, rightFit("Cal dB", columns.calibration), rightFit("Uses", columns.uses))
-	}
-	if columns.assignment > 0 {
-		parts = append(parts, fit("Assignment", columns.assignment))
-	}
+	if usable < mediumListWidth {
+		name.width = usable - level.width - columnGap
 
-	return m.colors.detailLabel.Render(fit(strings.Repeat(" ", rowPrefixWidth)+
-		fit(state, columns.status)+strings.Join(parts, " "), width))
+		return []listColumn{name, level}
+	}
+	flexible := usable - level.width - columnSplit*columnGap
+	plays := listColumn{field: listPlays, title: "Plays in", width: flexible * playsShare / playsParts, right: false}
+	name.width = flexible - plays.width
+
+	return []listColumn{name, plays, level}
 }
 
-func familyDisplayName(family string, width int) string {
-	if width < fullFamilyWidth {
-		switch family {
-		case "mechanical_interaction":
-			return "mechanical"
-		case "special_event":
-			return "special"
+func momentColumns(usable int) []listColumn {
+	name := listColumn{field: listName, title: "Moment", width: usable, right: false}
+	volume := listColumn{field: listVolume, title: "Vol", width: volumeColumnWidth, right: true}
+	if usable < narrowListWidth {
+		return []listColumn{name}
+	}
+	if usable < mediumListWidth {
+		name.width = usable - volume.width - columnGap
+
+		return []listColumn{name, volume}
+	}
+	kind := listColumn{field: listKind, title: "Kind", width: kindColumnWidth, right: false}
+	flexible := usable - volume.width - kind.width - (columnSplit+1)*columnGap
+	sound := listColumn{field: listSound, title: "Sound", width: flexible / columnSplit, right: false}
+	name.width = flexible - sound.width
+
+	return []listColumn{name, sound, volume, kind}
+}
+
+func rowText(columns []listColumn, cells []string) string {
+	parts := make([]string, 0, len(columns))
+	for index, column := range columns {
+		if column.right {
+			parts = append(parts, rightFit(cells[index], column.width))
+		} else {
+			parts = append(parts, fit(cells[index], column.width))
 		}
 	}
 
-	return family
+	return strings.Join(parts, strings.Repeat(" ", columnGap))
 }
 
-func calibrationCell(recording audio.Recording) string {
-	if recording.CalibrationGainDB == nil {
-		return "— U"
+func (m *model) columnHeader(width int) string {
+	columns := m.listColumns(width)
+	titles := make([]string, 0, len(columns))
+	for _, column := range columns {
+		titles = append(titles, column.title)
 	}
-	mode := "M"
+
+	return m.colors.dim.Render(fit(strings.Repeat(" ", listPrefixWidth)+rowText(columns, titles), width))
+}
+
+// One row: a ">" on the selection, a mark for the file's state, then the cells.
+// Empty slots are dimmed so the sounds that exist stand out.
+func (m *model) itemLine(identity string, selected bool, width int) string {
+	status := m.itemStatus(identity)
+	mark, _ := stateMark(status.State)
+	columns := m.listColumns(width)
+	cells := make([]string, 0, len(columns))
+	for _, column := range columns {
+		cells = append(cells, safe(m.listCell(identity, column.field)))
+	}
+	text := rowText(columns, cells)
+	switch {
+	case selected:
+		return m.colors.selected.Render(fit(">"+mark+" "+text, width))
+	case status.State == audio.RecordingNoFile:
+		return m.colors.dim.Render(fit(" "+mark+" "+text, width))
+	}
+
+	return fit(" "+m.stateStyle(status.State).Render(mark)+" "+text, width)
+}
+
+func (m *model) listCell(identity string, field listField) string {
+	switch field {
+	case listName:
+		return m.listName(identity)
+	case listPlays:
+		return m.playsIn(identity)
+	case listLevel:
+		return levelCell(m.doc.Recording(identity))
+	case listSound:
+		return soundCell(m.doc.Cue(identity))
+	case listVolume:
+		return percent(m.doc.Cue(identity).VolumeModifier)
+	case listKind:
+		return kindWord(m.cuePreviewCategory(identity))
+	}
+
+	panic("invalid list column")
+}
+
+// An asterisk marks an entry changed since the last save, including a moment
+// whose shared recording was edited.
+func (m *model) listName(identity string) string {
+	name, edited := identity, m.doc.RecordingChanged(identity)
+	if m.browsingCues() {
+		cue := m.doc.Cue(identity)
+		name, edited = cue.Name, m.doc.CueChanged(identity)
+		for _, recordingID := range cue.Recordings() {
+			edited = edited || m.doc.RecordingChanged(recordingID)
+		}
+	}
+	if edited {
+		name += editedSuffix
+	}
+
+	return name
+}
+
+func (m *model) playsIn(recordingID string) string {
+	usages := m.doc.Usages(recordingID)
+	switch len(usages) {
+	case 0:
+		return nothingAssigned
+	case 1:
+		return m.doc.Cue(usages[0]).Name
+	}
+
+	return fmt.Sprintf("%d moments", len(usages))
+}
+
+func levelCell(recording audio.Recording) string {
+	if recording.CalibrationGainDB == nil {
+		if recording.File == nil {
+			return ""
+		}
+
+		return "not set"
+	}
+	mode := "set"
 	if recording.CalibrationMode() == audio.CalibrationAuto {
-		mode = "A"
+		mode = audio.CalibrationAuto
 	}
 
 	return fmt.Sprintf("%+.1f %s", *recording.CalibrationGainDB, mode)
 }
 
-func (m *model) momentFamilyMismatch(cueID string) bool {
-	classification := m.doc.CueClassification(cueID)
-	for _, recordingID := range m.doc.Cue(cueID).Recordings() {
-		if m.doc.RecordingFamily(recordingID) != classification.TargetAcousticFamily {
-			return true
-		}
+func soundCell(cue audio.Cue) string {
+	recordings := cue.Recordings()
+	switch len(recordings) {
+	case 0:
+		return nothingAssigned
+	case 1:
+		return recordings[0]
 	}
 
-	return false
+	return fmt.Sprintf("%d clips in turn", len(recordings))
 }
 
-func (m *model) columnValues(identity string, columns browserColumns) string {
-	if m.browsingCues() {
-		cue := m.doc.Cue(identity)
-		family := familyDisplayName(m.doc.CueClassification(identity).TargetAcousticFamily, columns.family)
-		familyCell := fit(family, columns.family)
-		if m.momentFamilyMismatch(identity) {
-			familyCell = m.colors.warning.Render(fit(family, columns.family-mismatchMarkerWidth) + " !")
-		}
-		parts := []string{fit(safe(cue.Name), columns.name), familyCell}
-		if columns.assignment > 0 {
-			assignment := cue.PrimaryRecording()
-			if len(cue.Recordings()) > 1 {
-				assignment = fmt.Sprintf("%d clips ↻", len(cue.Recordings()))
-			}
-			parts = append(parts, fit(safe(assignment), columns.assignment))
-		}
-
-		return strings.Join(parts, " ")
-	}
-	parts := []string{fit(safe(identity), columns.name),
-		fit(familyDisplayName(m.doc.RecordingFamily(identity), columns.family), columns.family)}
-	if columns.calibration > 0 {
-		parts = append(parts, rightFit(calibrationCell(m.doc.Recording(identity)), columns.calibration),
-			rightFit(strconv.Itoa(len(m.doc.Usages(identity))), columns.uses))
+func kindWord(category previewCategory) string {
+	switch category {
+	case previewMusic:
+		return categoryMusic
+	case previewAmbience:
+		return "ambience"
+	case previewSFX:
+		return "effect"
+	case previewCategoryAuto, previewCategoryCount:
 	}
 
-	return strings.Join(parts, " ")
+	return ""
 }
 
 func rightFit(value string, width int) string {

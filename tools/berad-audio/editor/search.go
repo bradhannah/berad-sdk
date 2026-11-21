@@ -1,8 +1,11 @@
 package editorui
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
@@ -11,30 +14,68 @@ import (
 const fieldSearch = "search"
 const fieldKeywords = "keywords"
 const fieldTrigger = "typical trigger"
+const searchPromptWidth = 4
+const facetCategory = "category"
+const facetFamily = "family"
 
 func (m *model) beginSearch() {
+	m.searchBefore = m.search
 	m.beginInput(fieldSearch, m.search)
 	m.focus = focusBrowser
 }
 
-func (m *model) browserSearchLines(width int) []string {
-	if m.field != fieldSearch {
-		return []string{m.searchLine(width)}
+// The filter narrows the list while it is typed; Escape puts the old one back.
+func (m *model) applySearch(value string) tea.Cmd {
+	selected := m.selectedID()
+	m.search = strings.TrimSpace(value)
+	m.refreshKeys()
+	m.status, m.statusIsError = "", false
+	var command tea.Cmd
+	if selected != m.selectedID() {
+		command = m.loadSelection()
+	}
+	if hint := m.unknownFilterWord(); hint != "" {
+		m.status = hint
 	}
 
-	return []string{m.colors.focus.Render(fit("┏ EDIT FILTER — type below", width)),
-		m.colors.key.Render(m.searchLine(width)), m.colors.focus.Render(fit("┗ Enter: apply · Escape: cancel", width))}
+	return command
 }
 
-func (m *model) searchLine(width int) string {
-	if m.field != fieldSearch {
-		return fit(m.colors.detailLabel.Render("Filter: ")+m.colors.detailValue.Render(safe(m.search)), width)
+// A "word:value" term with a word the editor does not know can never match.
+func (m *model) unknownFilterWord() string {
+	if m.routingWorkspace() {
+		return ""
 	}
-	const label = "FILTER › "
-	available := max(1, width-ansi.StringWidth(label)-1)
-	input := m.inputText.viewport(m.input, available, m.colors.selected.Render)
+	for _, term := range strings.Fields(strings.ToLower(m.search)) {
+		word, _, keyed := strings.Cut(term, ":")
+		if keyed && !slices.Contains(filterWords(), word) {
+			return "No filter is called \"" + safe(word) + "\". Try " + strings.Join(filterWords(), ", ") + "."
+		}
+	}
 
-	return m.colors.selected.Render(fit(label+input, width))
+	return ""
+}
+
+func filterWords() []string {
+	return []string{facetCategory, facetFamily, "phase", "outcome", "role", routingEmitter, "context"}
+}
+
+// One row, shown only while a filter is set or being typed.
+func (m *model) browserSearchLines(width int) []string {
+	if !m.searchRowVisible() {
+		return nil
+	}
+	text, tail := safe(m.search), " · / edits "
+	count := fmt.Sprintf("%d of %d", len(m.keys), len(m.workspaceIDs()))
+	if m.field == fieldSearch {
+		tail = " · Esc clears "
+		text = m.inputText.viewport(m.input, max(1, width-ansi.StringWidth(count+tail)-searchPromptWidth),
+			m.colors.selected.Render)
+	}
+	left := " " + m.colors.hintKey.Render("/") + " " + text
+	gap := max(1, width-ansi.StringWidth(left)-ansi.StringWidth(count+tail))
+
+	return []string{fit(left+strings.Repeat(" ", gap)+m.colors.dim.Render(count+tail), width)}
 }
 
 func (m *model) beginMetadataEdit(trigger bool) {

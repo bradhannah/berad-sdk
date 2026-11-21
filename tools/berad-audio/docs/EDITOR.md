@@ -7,64 +7,83 @@ interaction contract; consumers document their particular world assignments.
 
 ## Workspaces and input ownership
 
-Recordings edits shared sources, calibration, notes and non-destructive windows.
-Moments edits cues, assignments and contextual gain. Tiles and Locations expose
-configured routing descriptors, not world discovery. Each workspace retains its
-filter and selected item. Active tab/pane has text markers and a highlighted border;
-availability and selection remain distinguishable without relying on color alone.
+Moments edits cues, assignments and each moment's volume; the editor opens there.
+Recordings edits shared sources, level, notes and non-destructive trims. Tiles and
+Locations expose configured routing descriptors, not world discovery. Each
+workspace retains its filter and selected item.
 
-The editor uses terminal height for its browser and waveform, Details or Soundscape
-pane and persistent status/shortcut strip. `?` opens full contextual Help. Long
-Details scroll; dialogs scroll to the focused control on small terminals. Below
-60×24 editing shortcuts pause so invisible controls cannot mutate data; Stop,
-Save and Quit retain their guards. Footer status/hints are never text input.
+The screen is one header row (workspace tabs, the library file, saved state and
+file-check progress), the list and Details panes, a modest waveform with a time
+ruler, one playback line, one message line and the key hints. The list takes the
+height the fixed rows leave. The pane with the keys has a heavy frame and the
+selected row starts with `>`, so focus, selection and availability read without
+relying on color. Cyan is reserved for keys and focus; green, amber and red
+describe state. `?` opens full Help. Long Details scroll; dialogs scroll to the
+focused control on small terminals. Below 60×24 editing shortcuts pause so
+invisible controls cannot mutate data; Stop, Save and Quit retain their guards.
 
 One typed input owner drives dispatch, foreground rendering and hints. Assignment
 pickers cannot open hidden gain/crop/history editors. Returning from a nested picker
-restores its parent selection/filter. Search is a highlighted draft above the list;
-numeric fields use a visible pane editor and paths/long text use dialogs.
+restores its parent selection/filter. The filter is one row in the list and narrows
+it while typed. A single value (level, volume, a trim time, the auto target) is
+typed where it is shown, starting from its current value selected so typing
+replaces it; Enter or Tab applies and Escape cancels. Paths and long text use
+dialogs. The message line reports the last action or the current selection.
 
 Fields edit graphemes: arrows move, Shift+arrows select, Backspace/Delete remove
 a grapheme/selection, Home/End move within a line, Alt+arrows or Alt+b/f move by word,
 Ctrl+w deletes the previous word, Ctrl+u clears. Notes support multiline Enter and
 retained-column vertical movement; Tab reaches Apply/Cancel. Bracketed paste inserts
 literal payload, never executes pasted key names. Long fields scroll their caret.
-Entering a field puts its caret at the end without selecting/replacing the value.
+In a dialog field the caret starts at the end without selecting the value;
 Enter/Tab finishes the field; Escape restores its entry value, then another Escape
-cancels the form. Filter Enter applies and Escape restores the prior filter.
+cancels the form. Filter Enter keeps what was typed and Escape restores the prior filter.
 
 ## Finding and repairing audio
 
-| Badge | Technical meaning |
-| --- | --- |
-| READY | Decoding and selected window are valid |
-| NO FILE | Intentional empty recording slot |
-| MISSING | Assigned file is absent |
-| INVALID | Unreadable/undecodable source, directory or invalid window |
-| CHECKING | Background validation pending |
+| Mark | Words | Technical meaning |
+| --- | --- | --- |
+| `●` | ready | Decoding and selected window are valid |
+| `·` | no audio yet | Intentional empty recording slot |
+| `!` | file missing | Assigned file is absent |
+| `!` | cannot play | Unreadable/undecodable source, directory or invalid window |
+| `…` | checking | Background validation pending |
 
-These are not listening approvals. Ctrl+f cycles All/Existing/Missing/Problems.
-Existing includes files still checking or invalid; Missing includes empty slots.
+These are not listening approvals. Empty slots are dimmed. The filter chips in the
+list title are the Ctrl+f cycle: All, With audio, Empty, Problems. With audio
+includes files still checking or invalid; Empty includes missing files.
 Search combines substrings with facets such as `category:sfx`, `family:signal`,
 `phase:select`, `outcome:accepted`, `role:interface`, `emitter:panel`, `context:menu`.
 Words are ANDed across names, IDs, paths, provenance, notes, classification, custom
 terms, linked recordings/cues and trigger descriptions. `category:unassigned` finds
 unused recordings. Family searches include a recording's own family or cue uses.
+A facet word the editor does not know is reported instead of silently matching nothing.
 
-F5 rechecks changed files without changing selection. Cancelled/deadline-expired
-checks are not INVALID; stale/cancelled results cannot replace newer selections.
-An asterisk marks changed entries, including cues sharing an edited recording.
-Recording columns show family, calibration (`A`/`M`/unset) and distinct cue-use count;
-Moments show intent family and assignment/cycle. A mismatch is a review prompt,
-not invalid playback. Compact layouts omit columns rather than identity/context.
+Files are checked four at a time and the header counts progress. F5 rechecks
+every file without changing selection; Undo, Redo and an import recheck only the
+recordings whose file or trim changed. Cancelled/deadline-expired checks are not
+invalid; stale/cancelled results cannot replace newer selections.
+An asterisk after the name marks changed entries, including cues sharing an edited
+recording. Recordings show the moment that plays them (or how many do) and their
+level as `-7.3 auto`, `-18.0 set` or `not set`. Moments are listed by name with
+their sound (or `N clips in turn`), volume as a percentage and kind. A recording
+filed under a different family than its moment expects is noted in Details; it is a
+review prompt, not invalid playback. Narrow panes drop trailing columns, never the name.
+
+Details answers, in order: where the sound plays in the game, its volume or level,
+its length, its file and license, and its note, with the key that changes each at
+the right edge. Shift+i switches to every measurement and filing detail and back.
 
 Use `f` to choose/import a source or assign a recording. File picker Enter opens a
-folder/accepts a file, Backspace goes up, `/` enters a path, `p` previews. Recording
-assignment picker Space previews/pauses and Enter assigns. Preview alone never
-authors. Failed imports restore the assigned source while retaining the error;
-candidate failures do not invalidate an unrelated assigned recording. License
-editing (Ctrl+L) works even with missing audio, changes only the license and is
-undoable; blank is rejected, literal `unknown` is permitted.
+folder/accepts a file, Backspace goes up, `/` enters a path, `p` previews. It reopens
+in the folder last shown, and a path pasted or dropped onto the terminal is opened
+directly (surrounding quotes and `\ ` escapes are accepted). Recording assignment
+picker Space previews/pauses and Enter assigns; replacing several ordered clips
+with one needs a second Enter. Preview alone never authors. Failed imports restore
+the assigned source while retaining the error; candidate failures do not invalidate
+an unrelated assigned recording. License editing (Ctrl+L) works even with missing
+audio, changes only the license and is undoable; blank is rejected, literal
+`unknown` is permitted.
 
 ## Principal controls
 
@@ -72,33 +91,41 @@ undoable; blank is rejected, literal `unknown` is permitted.
 | --- | --- |
 | Tab / Shift+Tab; 1–4 | Next/previous or direct workspace |
 | Up/Down; Ctrl+P/N; PgUp/PgDown or Shift+Up/Down | Browse/page focused content |
-| `/`; Ctrl+f; F5 | Filter draft; availability filter; source recheck |
-| w / d / m | Waveform / Details / Soundscape focus |
-| Enter or p; Space; l; Shift+S | Start/restart; pause/resume; loop; full-source/region |
-| +/-; g | Recording calibration or Moment cue gain; exact value |
+| `/`; Ctrl+f; F5 | Filter as typed; availability filter; source recheck |
+| w / d / m; Shift+i | Waveform / Details / Soundscape focus; every number in Details |
+| Enter or p; Space; l; Shift+S | Start/restart; pause/resume; loop; whole file or trimmed part |
+| +/-; g | Moment volume or Recording level; type the value |
 | v | Temporary category monitoring and Reference controls |
-| i/o; [/]; s/e | Mark bounds; select marker; exact start/end |
+| i/o; [/]; s/e | Mark bounds; select marker; type a start/end time |
 | Left/Right; Shift+Left/Right; z | Seek/nudge 10/100 ms; zoom |
-| t; r | Suggest bounds; reset region (Apply remains separate) |
+| t; r | Trim silence; back to the whole file (Apply remains separate) |
 | n; Shift+d; Shift+v | Empty recording; duplicate clip; ordered SFX variants |
 | Shift+N/K/H/C | Note / custom search terms / typical trigger / classification |
 | Shift+A; Shift+T | AUTO calibration approval; AUTO/unset target override |
 | u; Ctrl+R; Ctrl+S | Undo; Redo; validate/save applied document |
-| x / Ctrl+x | Stop voices and pending/repeat playback; retain mix assignments |
+| x / Ctrl+x | Stop voices and pending/repeat playback; retain mix assignments and focus |
 | q / Ctrl+C | Guarded quit; during publication Ctrl+C waits for completion |
 
-Ctrl+x also stops while typing or busy. Source/request generations bind candidate
-loads and AUTO approvals; opening another owner, changing selection or Stop rejects
-late playback. Availability scanning never retargets the active editor.
+Ctrl+x also stops while typing or busy. Loop and whole-file only change the setting
+while nothing plays; a playing preview restarts at the same position. Undo and Redo
+report their outcome. A run of +/- presses on one item is a single Undo entry.
+Source/request generations bind candidate loads and AUTO approvals; opening another
+owner, changing selection or Stop rejects late playback. Availability scanning never
+retargets the active editor.
 
 ## Region and duplicate drafts
 
-Mark/nudge/exact bounds/reset/suggest opens one detached region draft, leaving the
-waveform visible. Tab/Up/Down selects fields and visible Apply/Cancel; Enter edits
-or activates. Duplicate uses Create/Cancel and a new ID. Enter on a bound finishes
-only that field. Crossed bounds stay visible, stop audition and cannot apply.
-`w` targets the source cursor; `[`/`]` retarget a marker. Help shows loaded path,
-fingerprint and shared uses. Zoom retains a whole-source overview.
+Mark/nudge/typed bounds/reset/trim-silence opens one detached trim draft, named in
+the header, leaving the waveform visible. The pane shows the recording's current
+start, end and length beside the draft's, the difference, and which moments use it.
+Up/Down or `[`/`]` select Start or End; Enter applies the draft and Escape discards
+it. Times are written and typed as `m:ss.mmm` (plain seconds are accepted). A
+duplicate adds a Name row: Enter there renames, `c` creates and `a` toggles appending
+it to its moment. Crossed bounds stay visible, stop audition and cannot apply.
+`w` targets the source cursor. While a marker is selected a close-up of the two
+seconds either side sits beside the whole-file waveform, where the part being cut
+off is dimmed. `p` plays the draft; Shift+p plays only the two seconds at the
+selected marker (the ending unless Start is selected). `?` lists the draft's keys.
 
 Valid changes update the draft immediately. Cached analysis and preview rebuilds
 coalesce at 100 ms presentation ticks; repeat events do not clone/revalidate/read
@@ -116,10 +143,12 @@ updates their region while preserving position/pause. Unrelated layers keep play
 Duplicate preserves original layers; its retained audition labels the original cue mix.
 
 Stamp probes invalidate changed sources and stop affected voices. F5 in a draft
-reloads/rebinds while retaining bounds for review. Content verification rejects
-same-size/same-timestamp replacements. It cannot lock out arbitrary external writers.
-The waveform uses stereo peaks, a -72..0 dB display and fractional bars; digital zero
-stays flat. This scaling changes no audio, measurements or suggestion threshold.
+reloads/rebinds while retaining bounds for review; if that reload fails the draft
+and its keys remain usable. Content verification rejects same-size/same-timestamp
+replacements. It cannot lock out arbitrary external writers.
+The waveform averages a few stereo peaks per column on a -48..0 dB display with
+fractional bars, so sustained music keeps a shape; digital zero stays flat. This
+scaling changes no audio, measurements or suggestion threshold.
 
 Duplicate IDs use the next unused numeric suffix with zero padding. The new clip
 shares bytes/provenance/calibration, gets a fresh note and independent window. If
@@ -132,32 +161,39 @@ Only successful preview advances its cursor; runtime and editor cursors are sepa
 
 ## Calibration and monitoring
 
-AUTO is offline calibration, not a compressor. Unset gain displays a suggestion;
-Shift+A plus confirmation accepts it. Manual +/-/g locks recording gain. Manual
-survives source/window/family changes; only confirmed AUTO unlocks it. AUTO source,
-region and family edits publish calibration atomically. Moment +/-/g changes cue
-gain, not shared recording calibration. Seeking/loading never authors gain. See
+AUTO is offline calibration, not a compressor. Unset level displays a suggestion
+under Shift+i; Shift+A plus confirmation accepts it. Manual +/-/g locks recording
+level and the message line says auto was switched off. Manual survives
+source/window/family changes; only confirmed AUTO unlocks it. AUTO source,
+region and family edits publish calibration atomically. Moment +/-/g changes that
+moment's volume (shown as a percentage), not shared recording calibration.
+Seeking/loading never authors gain. See
 the [analysis contract](../../../modules/berad-audio/docs/AUTHORING.md) for estimator
 limits; consumer targets are provisional until contextual listening accepts them.
 
-`v` opens temporary 0–10 Music/SFX/Ambience monitoring (initially 7 each), with a
-consumer-supplied slider curve and mix label. Arrows or +/- adjust; Enter/Escape/v
-closes while retaining the session values. `r` toggles Reference. Cue comparison
+`v` opens temporary 0–10 Music/SFX/Ambience monitoring with a consumer-supplied
+slider curve and mix label; the playback line always shows the three levels. They
+start at 7 each unless the consumer supplies `Options.InitialSliders`, which a game
+should set to its default player volumes so the editor's mix matches what ships.
+Arrows or +/- adjust; Enter/Escape/v closes while retaining the session values.
+`r` toggles Reference. Cue comparison
 uses calibration × cue gain × category; it does not simulate host attenuation,
 fades or suppression. Bare recordings have no cue gain; shared-use categories or
 the consumer fallback select their bus, with an explicit override available.
 Reference uses calibrated source at unity monitoring, bypassing cue/category gain;
 layer gain/mute/solo still apply. File candidates bypass the old assigned source's
-calibration. Details names the actual route/gain. Monitoring never changes authored
+calibration. Shift+i names the actual route/gain. Monitoring never changes authored
 calibration, manifest or player preferences and resets on editor restart.
 
 ## Routing workspaces
 
 Tiles/Locations use configured family/target labels and inheritance. `f` chooses a
 compatible assignment, explicit silence or inheritance when supported. `o` jumps to
-the Moment and `U` navigates usages; counts describe configured types/assignments,
+the Moment and `U` navigates usages; Escape returns from such a jump until the
+workspace is switched by hand. Counts describe configured types/assignments,
 not placed world objects or reachable gameplay. Ctrl+f cycles assignment scopes.
-Tile `F` displays family details; Insert marks families for one bulk edit. `s` selects
+Tile `F` displays family details; Insert marks families for one bulk edit, after
+which the marks are cleared. `s` selects
 a surface, `D` its default, `S` an ordered footstep-list draft. An empty list is silent.
 These edits do not change host passability. Family members inherit canonical edits.
 
@@ -172,7 +208,8 @@ The consumer decides which world situations use these assignments.
 
 ## Temporary Soundscape
 
-`m` opens four slots: Ambient 1, Ambient 2, Music, SFX. The status strip identifies
+`m` opens four slots: Ambient 1, Ambient 2, Music, SFX. While a Soundscape is
+loaded a strip above the playback line identifies
 playing/paused/finished/stopped/muted/empty layers and any standalone preview.
 Select an ambient Moment and `a` fills an empty bed; when full, choose replacement
 with 1/2 or arrows then Enter, or Escape. Existing beds continue during selection.
@@ -183,8 +220,9 @@ standalone preview to avoid doubling. Failed replacement retains the working slo
 In Soundscape: arrows select, Enter restarts, Space pauses/resumes, `u` mutes,
 `s` solos, +/- changes layer gain, Delete removes, `l` toggles loop/repeat. SFX repeat
 is bounded to 500 ms and does not accumulate voices. Mute/solo/gain survive source
-replacement. Stop All cancels pending/repeat playback but retains assignments.
-Browsing preserves the mix; import, variant edits and Undo/Redo clear stale layers.
+replacement. Stop All cancels pending/repeat playback but retains assignments and
+focus. Browsing preserves the mix; import and variant edits clear stale layers, and
+Undo/Redo remove only layers whose recording changed.
 Quit closes every voice. None of these assignments/levels are persisted as production
 mixes or saved sessions, and native host listening remains separate acceptance.
 
@@ -196,8 +234,9 @@ replayed/foreign/stale results cannot replace newer authored state. Publication 
 must still merge even if approval is rejected. Ctrl+C waits for publication to settle;
 failure stays visible and successful completion still checks unsaved work.
 
-The editor displays authored dirtiness separately from DURABILITY PENDING and retained
-imports. Ctrl+S can retry pending sync without rewriting unchanged data. Quit guards
+The header shows authored dirtiness separately from an unconfirmed save, and Shift+i
+lists retained imports. Ctrl+S can retry pending sync without rewriting unchanged
+data. Quit guards
 unfinished drafts and pending durability even when authored state is clean. Undo and
 Quit never delete imported files. Review copied assets and metadata in version control.
 See the [publication contract](../../../modules/berad-audio/docs/AUTHORING.md#save-import-and-recovery)

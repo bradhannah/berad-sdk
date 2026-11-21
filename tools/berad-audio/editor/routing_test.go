@@ -22,8 +22,7 @@ func TestRoutingWorkspacesRetainSelectionAndShowDistinctTabs(t *testing.T) {
 		finish(m, m.selectWorkspace(workspace))
 		tabs := m.workspaceTitle()
 		require.Contains(t, tabs, "\x1b[", "tabs must use terminal styling")
-		require.Contains(t, ansi.Strip(tabs), fmt.Sprintf("▶ %d %s ◀", workspace+1, strings.ToUpper(workspaceName(workspace))))
-		require.Contains(t, ansi.Strip(m.View()), "AUDIO LIBRARY EDITOR  /  "+strings.ToUpper(workspaceName(workspace)))
+		require.Contains(t, ansi.Strip(tabs), fmt.Sprintf("[%d %s]", workspace+1, workspaceName(workspace)))
 		for _, width := range []int{60, 80, 120} {
 			for _, height := range []int{24, 36} {
 				m.width, m.height = width, height

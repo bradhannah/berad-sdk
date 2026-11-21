@@ -9,20 +9,17 @@ import (
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
+// routingFilterTitle names what the list shows and the key that changes it.
 func (m *model) routingFilterTitle() string {
-	filters := []string{"All", "Assigned", "Silent / none", "Needs audio", "Surface overrides"}
-	if m.workspace == workspaceLocations {
-		filters[4] = "Inherited"
+	filters := []string{filterLabelAll, "Assigned", "Silent / none", "Needs audio", "Surface overrides"}
+	if m.workspace != workspaceLocations {
+		return filters[m.routing.filter] + " (Ctrl+F)"
 	}
-	text := "FILTER: " + filters[m.routing.filter] + " · Ctrl+F changes"
-	if m.workspace == workspaceLocations {
-		scopes := []string{"All", m.groupLabel(routingMusic), m.groupLabel(routingDungeon),
-			"Dynamic emitters", m.groupLabel(routingNaval)}
-		scope := scopes[m.routing.scope]
-		text += "  SCOPE: " + scope + " · s changes"
-	}
+	filters[4] = "Inherited"
+	scopes := []string{filterLabelAll, m.groupLabel(routingMusic), m.groupLabel(routingDungeon),
+		"Dynamic emitters", m.groupLabel(routingNaval)}
 
-	return text
+	return filters[m.routing.filter] + " (Ctrl+F) · group: " + scopes[m.routing.scope] + " (s)"
 }
 
 func (m *model) routingBrowserLines(width int) []string {
@@ -57,9 +54,7 @@ func (m *model) routingBrowserLines(width int) []string {
 		}
 		rows = append(rows, fit(line, width))
 	}
-	if m.browserLabelRows() > browserHeadingRows {
-		rows = append(rows, m.routingLegend(width))
-	}
+	rows = append(rows, m.routingLegend(width))
 
 	return rows
 }

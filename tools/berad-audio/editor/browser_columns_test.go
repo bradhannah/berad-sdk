@@ -1,7 +1,6 @@
 package editorui
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -13,61 +12,57 @@ import (
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
-func TestRecordingColumnsShowCalibrationOwnershipAndLiveUsageCount(t *testing.T) {
+func TestRecordingRowsSayWhereTheSoundPlaysAndItsLevelInWords(t *testing.T) {
 	m := fixture(t)
-	const width = 53 // Recording pane inside a 100-column terminal.
+	const width = 64 // Recording pane inside a 120-column terminal.
 	header := ansi.Strip(m.columnHeader(width))
-	for _, label := range []string{"Recording ID", "Family", "Cal dB", "Uses"} {
+	for _, label := range []string{"Sound file", "Plays in", "Level dB"} {
 		require.Contains(t, header, label)
 	}
 	recording := m.doc.Recording("healing_01")
 	gain := -12.345
 	recording.CalibrationGainDB, recording.CalibrationPolicy = &gain, audio.CalibrationAuto
 	require.NoError(t, m.doc.SetRecording("healing_01", recording))
-	uses := len(m.doc.Usages("healing_01"))
 	line := ansi.Strip(m.itemLine("healing_01", true, width))
-	require.Contains(t, line, "healing_01")
-	require.Contains(t, line, "magic")
-	require.Contains(t, line, "-12.3 A")
-	require.True(t, strings.HasSuffix(line, fmt.Sprintf("%4d", uses)))
+	require.True(t, strings.HasPrefix(line, ">● healing_01 *"), "selection, state and the edited mark lead the row: %q", line)
+	require.Contains(t, line, "Restore an injured")
+	require.Contains(t, line, "-12.3 auto")
 	gain = 0
 	recording.CalibrationPolicy = audio.CalibrationManual
 	require.NoError(t, m.doc.SetRecording("healing_01", recording))
-	require.Contains(t, ansi.Strip(m.itemLine("healing_01", false, width)), "+0.0 M")
+	require.Contains(t, ansi.Strip(m.itemLine("healing_01", false, width)), "+0.0 set")
 	recording.CalibrationGainDB, recording.CalibrationPolicy = nil, ""
 	require.NoError(t, m.doc.SetRecording("healing_01", recording))
-	require.Contains(t, ansi.Strip(m.itemLine("healing_01", false, width)), "— U")
+	require.Contains(t, ansi.Strip(m.itemLine("healing_01", false, width)), "not set")
 	cue := m.doc.Cue("sfx/SoundUnlock").WithRecordings([]string{"healing_01"})
 	require.NoError(t, m.doc.SetCue("sfx/SoundUnlock", cue))
-	line = ansi.Strip(m.itemLine("healing_01", false, width))
-	require.True(t, strings.HasSuffix(line, fmt.Sprintf("%4d", uses+1)), "usage count must reflect working-copy assignments")
+	require.Contains(t, ansi.Strip(m.itemLine("healing_01", false, width)), "2 moments")
+	require.True(t, strings.HasPrefix(ansi.Strip(m.itemLine("door_open_01", false, width)), " · door_open_01"),
+		"an empty slot gets the quiet mark")
 }
 
-func TestMomentColumnsFlagEveryMismatchedCycleMember(t *testing.T) {
+func TestMomentRowsShowSoundVolumeAndKindAndSortByName(t *testing.T) {
 	m := fixture(t)
 	m.workspace = workspaceMoments
 	m.refreshKeys()
-	header := ansi.Strip(m.columnHeader(70))
-	for _, label := range []string{"Moment", "Target", "Assignment"} {
+	header := ansi.Strip(m.columnHeader(64))
+	for _, label := range []string{"Moment", "Sound", "Vol", "Kind"} {
 		require.Contains(t, header, label)
 	}
-	line := ansi.Strip(m.itemLine("sfx/SoundPushObject", false, 70))
+	names := make([]string, 0, len(m.keys))
+	for _, id := range m.keys {
+		names = append(names, strings.ToLower(m.doc.Cue(id).Name))
+	}
+	require.IsNonDecreasing(t, names, "moments are listed by the name on screen")
+	line := ansi.Strip(m.itemLine("sfx/SoundPushObject", false, 64))
 	require.Contains(t, line, "push_pull_01")
-	require.NotContains(t, line, "mechanical !")
-	push := m.doc.Cue("sfx/SoundPushObject").WithRecordings([]string{"healing_01"})
-	require.NoError(t, m.doc.SetCue("sfx/SoundPushObject", push))
-	line = ansi.Strip(m.itemLine("sfx/SoundPushObject", false, 70))
-	require.Contains(t, line, "mechanical !")
-	require.Contains(t, line, "healing_01")
+	require.Contains(t, line, "100%")
+	require.Contains(t, line, "effect")
 	require.NoError(t, m.doc.SetCueRecordings("sfx/SoundHeal", []string{"healing_01", "healing_02"}))
-	require.False(t, m.momentFamilyMismatch("sfx/SoundHeal"))
-	require.NoError(t, m.doc.SetRecordingFamily("healing_02", "impact"))
-	require.True(t, m.momentFamilyMismatch("sfx/SoundHeal"), "a matching first member must not hide another member's mismatch")
-	line = ansi.Strip(m.itemLine("sfx/SoundHeal", true, 70))
-	require.Contains(t, line, "2 clips ↻")
-	require.Contains(t, line, "!")
-	require.NoError(t, m.doc.SetRecordingFamily("healing_01", "mechanical_interaction"))
-	require.False(t, m.momentFamilyMismatch("sfx/SoundPushObject"), "warning follows repaired assignments")
+	require.Contains(t, ansi.Strip(m.itemLine("sfx/SoundHeal", true, 64)), "2 clips in turn")
+	require.NoError(t, m.doc.SetRecordingFamily("healing_01", "impact"))
+	m.selectID("sfx/SoundHeal")
+	require.Contains(t, ansi.Strip(strings.Join(m.summaryLines(50), "\n")), "Filed as impact; this moment expects magic.")
 }
 
 func TestColumnsFitNarrowAndWidePanesWithColoursAndUnicode(t *testing.T) {
@@ -96,7 +91,6 @@ func TestColumnsFitNarrowAndWidePanesWithColoursAndUnicode(t *testing.T) {
 	}
 	m.workspace = workspaceRecordings
 	narrow := ansi.Strip(m.columnHeader(31))
-	require.Contains(t, narrow, "Family")
-	require.NotContains(t, narrow, "Cal dB")
-	require.Contains(t, strings.Join(m.detailLines(80), "\n"), "Calibration [working]")
+	require.Contains(t, narrow, "Sound file")
+	require.NotContains(t, narrow, "Plays in")
 }

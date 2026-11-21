@@ -6,11 +6,12 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
-const transportRows = 4
+const transportRows = 1
 
 func (m *model) newAmbientPreviewGain() float64 {
 	gain := 1.0
@@ -136,16 +137,16 @@ func (m *model) previewAmbientProfile() (audio.AmbientProfile, bool) {
 
 func (m *model) transportState() string {
 	if m.previewVoice().Playing() {
-		return "▶ PLAYING"
+		return "▶ playing"
 	}
 	if m.previewVoice().Active() && m.previewIsPaused() {
-		return "Ⅱ PAUSED"
+		return "Ⅱ paused"
 	}
 	if m.loading {
-		return "… LOADING"
+		return "… loading"
 	}
 
-	return "■ STOPPED"
+	return "■ stopped"
 }
 
 func (m *model) previewDescription() string {
@@ -159,27 +160,51 @@ func (m *model) previewDescription() string {
 	return m.recordingID()
 }
 
+// One line: what is playing, where in it, and at which volumes.
 func (m *model) transportView(width int) string {
-	state := m.transportState()
-	style := m.colors.focus
-	if m.previewVoice().Playing() {
+	voice := m.previewVoice()
+	position, total := m.position, int64(0)
+	if voice.Active() {
+		position = voice.PositionMs()
+	}
+	if m.crop != nil {
+		total = m.crop.source.DurationMs()
+	} else if m.clip != nil {
+		total = m.clip.DurationMs()
+	}
+	style := m.colors.dim
+	if voice.Playing() {
 		style = m.colors.ready
 	}
-	label := m.previewDescription()
-	if label == "" {
-		label = "No sound selected"
+	at := brief(position, total)
+	if m.crop != nil {
+		at = clock(position, true)
 	}
-	mode := "One-shot"
-	if m.previewLoop {
-		mode = "Looping"
-	}
-	line := fmt.Sprintf("%s · %s · %.1f s", safe(label), mode, float64(m.previewVoice().PositionMs())/msPerSecond)
-	if m.routingWorkspace() {
-		line += fmt.Sprintf(" · Distance %g tiles (temporary)", m.routing.distance)
+	left := " " + style.Render(m.transportState()) + "  " + m.colors.title.Render(at) +
+		m.colors.dim.Render(" / "+brief(total, total)) + "   " + safe(m.previewDescription()) +
+		m.colors.dim.Render(m.transportFlags())
+	right := m.previewVolumeStrip() + " "
+	gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
+	if gap < 1 {
+		return fit(left, width)
 	}
 
-	return m.panel("PREVIEW · "+state, []string{style.Render(fit(line, width-panelEdges)),
-		fit("Enter: play/restart   Space: pause/resume   x / Ctrl+x: stop", width-panelEdges)}, width, transportRows, false)
+	return left + strings.Repeat(" ", gap) + right
+}
+
+func (m *model) transportFlags() string {
+	flags := ""
+	if m.looping {
+		flags += " · loop"
+	}
+	if m.fullSource {
+		flags += " · whole file"
+	}
+	if m.routingWorkspace() {
+		flags += fmt.Sprintf(" · %g tiles away", m.routing.distance)
+	}
+
+	return flags
 }
 
 func (m *model) showAnimationInfo() {
@@ -195,33 +220,66 @@ func (m *model) infoKey(key string) {
 	case keyEscape, keyEnter, "?":
 		m.infoDialog = nil
 	case "up":
-		m.infoDialog.scroll = max(0, m.infoDialog.scroll-1)
+		m.scrollInfo(-1)
 	case keyDown:
-		m.infoDialog.scroll = min(len(m.infoDialog.lines)-1, m.infoDialog.scroll+1)
+		m.scrollInfo(1)
+	case keyPageUp:
+		m.scrollInfo(-m.infoPage())
+	case keyPageDown:
+		m.scrollInfo(m.infoPage())
+	case "home":
+		m.infoDialog.scroll = 0
+	case "end":
+		m.infoDialog.scroll, _ = m.infoBounds()
 	}
+}
+
+// infoBounds returns the largest top row and the page size of the open info dialog,
+// measured exactly as overlayDialog wraps and fits it.
+func (m *model) infoBounds() (int, int) {
+	width := min(maxDialogWidth, m.width-editorDialogMargin)
+	dialog, _ := m.dialogContent(width - panelEdges)
+	layout := m.layoutDialog(dialog, width)
+
+	return max(0, len(layout.rows)-layout.capacity), layout.capacity
+}
+
+func (m *model) infoPage() int {
+	_, page := m.infoBounds()
+
+	return page
+}
+
+func (m *model) scrollInfo(delta int) {
+	limit, _ := m.infoBounds()
+	m.infoDialog.scroll = max(0, min(limit, m.infoDialog.scroll+delta))
 }
 
 func (m *model) openHelp() {
 	lines := []string{
-		"BROWSING AND PLAYBACK", "1–4 / Tab: workspace · /: search · Ctrl+F: filter",
-		"Enter / p: play or restart · Space: pause/resume · Ctrl+x: stop all (including while typing)",
-		"n: next clip in Moments · Shift+n: recording note",
-		"Ctrl+S: save library · u / Ctrl+R: undo / redo", "",
+		"BROWSING AND PLAYBACK", "1–4 / Tab: workspace · /: filter as you type · Ctrl+F: all, with audio, empty, problems",
+		"Enter / p: play or restart · Space: pause/resume · x or Ctrl+x: stop (Ctrl+x also while typing)",
+		"n: next clip in Moments, new empty recording in Recordings · Shift+n: recording note",
+		"Ctrl+S: save library · u / Ctrl+R: undo / redo · F5: recheck files · q: quit",
+		"Shift+I: every number in Details", "",
 		"TILES AND LOCATIONS", "f: choose ambient sound or music · r: change recording · i: import recording file",
 		"p: preview ambience · Shift+P: preview footstep · n: next footstep",
 		"Insert: mark tile families · s: footstep surface / location scope",
 		"Shift+S: edit footstep sequence · Shift+D: default surface", "B: sound settings · Ctrl+A: new ambient sound",
 		"Left/Right: preview distance · Shift+L: preview leaving range", "F: animation details · U: used by · o: open sound",
-		"", "RECORDINGS AND MOMENTS", "f: file / recording picker · d: details · w: waveform · m: Soundscape",
-		"g / +/-: shared gain · i/o: trim markers · s/e: exact trim times",
-		"[/]: choose trim marker · arrows: nudge · z: zoom · t: suggest trim · r: reset trim",
-		"Regions are drafts: Tab/Enter selects Apply or Cancel; p auditions; Escape discards",
-		"F5 in a region reloads its source while retaining bounds for review · ? shows draft/source details",
+		"", "RECORDINGS AND MOMENTS", "f: file (Recordings) or sound (Moments) · d: details · w: waveform · m: Soundscape",
+		"+ / - / g: in Moments, that moment's volume (%) · in Recordings, the shared recording's level (dB)",
+		"l: loop on/off · Shift+S: whole file / trimmed part · i/o: mark a trim where it is playing",
+		"s/e: type a trim time · [/]: choose a trim marker · Left/Right: seek, or nudge the marker (Shift: bigger)",
+		"z: zoom · t: trim silence · r: back to the whole file",
+		"A trim is a draft: Enter applies, Escape discards, p plays it, Shift+P plays only its ending",
+		"F5 in a draft reloads its file and keeps the draft · ? lists the draft's keys",
 		"Shift+K: keywords · Shift+H: trigger · Shift+N: note · C: classification",
 		"Ctrl+L: edit the selected recording's license (shared provenance)",
-		"A: auto-gain · T: calibration target · D: duplicate clip · V: ordered variants",
+		"A: auto level · T: auto target · D: duplicate clip · V: ordered variants",
 		"a: add to Soundscape · v: temporary preview volumes", "",
 		"EDITING", "A highlighted field owns typing; other workspace shortcuts are suspended.",
+		"One value (level, volume, time): type over it · Enter applies · Escape cancels",
 		"Dialogs: Tab moves focus · Enter edits/activates Apply or Cancel · Escape cancels",
 		"Text: arrows move the caret · Home/End: line bounds · Ctrl+U: clear · Shift+arrows: select",
 		"Notes: Enter inserts a line · Tab selects Apply/Cancel · Enter activates the selected action",

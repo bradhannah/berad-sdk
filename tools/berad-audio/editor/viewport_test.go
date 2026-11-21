@@ -23,13 +23,13 @@ func TestPageKeysMoveVisiblePageAndRetainSelectionRow(t *testing.T) {
 			m.key(tea.KeyMsg{Type: keys[0]})
 			require.Equal(t, height+2, m.cursor)
 			rows := m.browserLines(100)
-			require.Contains(t, ansi.Strip(rows[browserHeadingRows]), m.keys[height], "first visible item must advance a whole page")
-			require.Contains(t, ansi.Strip(rows[browserHeadingRows+2]), m.keys[height+2], "selection stays on the third visible row")
+			require.Contains(t, ansi.Strip(rows[m.browserLabelRows()]), m.keys[height], "first visible item must advance a whole page")
+			require.Contains(t, ansi.Strip(rows[m.browserLabelRows()+2]), m.keys[height+2], "selection stays on the third visible row")
 			m.key(tea.KeyMsg{Type: tea.KeyUp})
-			require.Contains(t, ansi.Strip(m.browserLines(100)[browserHeadingRows]), m.keys[height], "ordinary Up retains the page")
+			require.Contains(t, ansi.Strip(m.browserLines(100)[m.browserLabelRows()]), m.keys[height], "ordinary Up retains the page")
 			m.key(tea.KeyMsg{Type: keys[1]})
 			require.Equal(t, 1, m.cursor)
-			require.Contains(t, ansi.Strip(m.browserLines(100)[browserHeadingRows]), m.keys[0])
+			require.Contains(t, ansi.Strip(m.browserLines(100)[m.browserLabelRows()]), m.keys[0])
 		})
 	}
 }
@@ -46,7 +46,7 @@ func (p *pagingInputProbe) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key, ok := message.(tea.KeyMsg); ok {
 		p.editor.key(key)
 		p.keys = append(p.keys, key.String())
-		p.rows = append(p.rows, ansi.Strip(p.editor.browserLines(100)[browserHeadingRows]))
+		p.rows = append(p.rows, ansi.Strip(p.editor.browserLines(100)[p.editor.browserLabelRows()]))
 		if len(p.keys) == 2 {
 			return p, tea.Quit
 		}
@@ -76,12 +76,12 @@ func TestPagingClampsAtEndsAndKeepsRenderedSelectionVisible(t *testing.T) {
 	}
 	require.Equal(t, len(m.keys)-1, m.cursor)
 	height := m.listHeight()
-	require.Contains(t, ansi.Strip(m.browserLines(100)[browserHeadingRows+height-1]), m.keys[len(m.keys)-1])
+	require.Contains(t, ansi.Strip(m.browserLines(100)[m.browserLabelRows()+height-1]), m.keys[len(m.keys)-1])
 	for range len(m.keys) {
 		m.key(tea.KeyMsg{Type: tea.KeyShiftUp})
 	}
 	require.Zero(t, m.cursor)
-	require.Contains(t, ansi.Strip(m.browserLines(100)[browserHeadingRows]), m.keys[0])
+	require.Contains(t, ansi.Strip(m.browserLines(100)[m.browserLabelRows()]), m.keys[0])
 }
 
 func TestFilePickerPagingMovesTheVisibleWindow(t *testing.T) {
@@ -92,7 +92,7 @@ func TestFilePickerPagingMovesTheVisibleWindow(t *testing.T) {
 		m.picker.entries = append(m.picker.entries, pickerEntry{name: fmt.Sprintf("clip_%03d.wav", index)})
 	}
 	m.pickerKey(tea.KeyMsg{Type: tea.KeyShiftDown})
-	require.Contains(t, ansi.Strip(m.fileLines(100)[browserHeadingRows]), fmt.Sprintf("clip_%03d.wav", height))
+	require.Contains(t, ansi.Strip(m.fileLines(100)[fileHeadingRows]), fmt.Sprintf("clip_%03d.wav", height))
 	m.pickerKey(tea.KeyMsg{Type: tea.KeyShiftUp})
-	require.Contains(t, ansi.Strip(m.fileLines(100)[browserHeadingRows]), "clip_000.wav")
+	require.Contains(t, ansi.Strip(m.fileLines(100)[fileHeadingRows]), "clip_000.wav")
 }

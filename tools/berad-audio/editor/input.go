@@ -1,6 +1,7 @@
 package editorui
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
+
+const minReplaceClips = 2
 
 const (
 	inputTyping = iota
@@ -21,6 +24,36 @@ func (m *model) beginInput(field, value string) {
 	m.field, m.input, m.inputError = field, value, ""
 	m.inputAction, m.statusIsError = inputTyping, false
 	m.inputText.reset(value)
+}
+
+// beginValueInput opens a one-value edit with the current value selected.
+func (m *model) beginValueInput(field, value string) {
+	m.beginInput(field, value)
+	m.inputText.selectAll(value)
+}
+
+func (m *model) beginGainInput() {
+	if m.selectedID() == "" || m.assigning {
+		return
+	}
+	if m.browsingCues() {
+		m.beginValueInput(fieldGain, strings.TrimSuffix(percent(m.doc.Cue(m.selectedID()).VolumeModifier), "%"))
+
+		return
+	}
+	value := 0.0
+	if gain := m.doc.Recording(m.recordingID()).CalibrationGainDB; gain != nil {
+		value = *gain
+	}
+	m.beginValueInput(fieldGain, strconv.FormatFloat(value, 'f', 1, 64))
+}
+
+func (m *model) beginBoundInput(field string) {
+	position := m.window().StartMs
+	if field == fieldEnd {
+		position = m.window().EndMs
+	}
+	m.beginValueInput(field, clock(position, true))
 }
 
 func (m *model) cancelInput() {
@@ -38,13 +71,17 @@ func (m *model) editInput(key tea.KeyMsg) tea.Cmd {
 	name := textControlKey(key)
 	switch name {
 	case keyEscape:
+		if m.field == fieldSearch {
+			before := m.searchBefore
+			m.cancelInput()
+
+			return m.applySearch(before)
+		}
 		m.discardInput()
 
 		return nil
-	case keySave:
-		return m.saveFromKeyboard()
 	case keyTab, keyShiftTab:
-		if m.field == fieldSearch {
+		if m.inlineInput() {
 			return m.commitInput()
 		}
 		direction := 1
@@ -70,6 +107,9 @@ func (m *model) editInput(key tea.KeyMsg) tea.Cmd {
 		m.inputText.edit(&m.input, key, m.field == fieldNote)
 	} else if name == keyLeft || name == keyRight {
 		m.inputAction = inputFocusCount - m.inputAction
+	}
+	if m.field == fieldSearch {
+		return m.applySearch(m.input)
 	}
 
 	return nil
@@ -119,11 +159,7 @@ func (m *model) commitInputValue() tea.Cmd {
 	case fieldCalibrationTarget:
 		m.setCalibrationTarget(value)
 	case fieldSearch:
-		m.search = value
-		m.refreshKeys()
-		if selected != m.selectedID() {
-			return m.loadSelection()
-		}
+		return m.applySearch(value)
 	case "new":
 		return m.createEmptyRecording(value)
 	case fieldNote:
@@ -192,29 +228,42 @@ func (m *model) createEmptyRecording(recordingID string) tea.Cmd {
 }
 
 func (m *model) commitNumber(field, value string) {
-	number, err := strconv.ParseFloat(value, 64)
-	if err != nil || math.IsNaN(number) || math.IsInf(number, 0) {
-		m.rejectInput("Enter a finite numeric value.")
+	if field == fieldStart || field == fieldEnd {
+		m.commitBound(field, value)
 
 		return
 	}
-	switch field {
-	case fieldGain:
-		m.setGain(number)
-	case fieldStart, fieldEnd:
-		if m.clip == nil || number < 0 || number > float64(m.clip.DurationMs()) || math.Trunc(number) != number {
-			m.rejectInput("Enter whole milliseconds within the recording.")
+	number, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(number) || math.IsInf(number, 0) {
+		m.rejectInput("Type a number.")
+
+		return
+	}
+	if m.browsingCues() {
+		if number < 0 || number > percentPerUnit {
+			m.rejectInput("Type a volume from 0 to 100.")
 
 			return
 		}
-		window := m.window()
-		if field == fieldStart {
-			window.StartMs = int64(number)
-		} else {
-			window.EndMs = int64(number)
-		}
-		m.setWindow(&window)
+		number /= percentPerUnit
 	}
+	m.setGain(number)
+}
+
+func (m *model) commitBound(field, value string) {
+	position, valid := parseClock(value)
+	if !valid || m.clip == nil || position > m.clip.DurationMs() {
+		m.rejectInput("Type a time inside the sound, like 1:35.000 or 95.5.")
+
+		return
+	}
+	window := m.window()
+	if field == fieldStart {
+		window.StartMs = position
+	} else {
+		window.EndMs = position
+	}
+	m.setWindow(&window)
 }
 
 func (m *model) selectID(id string) {
@@ -259,6 +308,9 @@ func (m *model) acceptAssignment() tea.Cmd {
 
 		return nil
 	}
+	if m.confirmReplace(m.selectedID()) {
+		return nil
+	}
 	var err error
 	if m.assignmentAppend {
 		err = m.doc.AppendCueRecording(m.assignmentCue, m.recordingID())
@@ -275,7 +327,24 @@ func (m *model) acceptAssignment() tea.Cmd {
 	return m.cancelAssignment()
 }
 
+// confirmReplace guards a plain assignment that would drop several ordered clips; it
+// reports true while the first Enter is still waiting for its confirming second one.
+func (m *model) confirmReplace(selected string) bool {
+	clips := len(m.doc.Cue(m.assignmentCue).Recordings())
+	if m.assignmentAppend || clips < minReplaceClips {
+		return false
+	}
+	if m.replaceConfirmed == selected {
+		return false
+	}
+	m.replaceConfirmed = selected
+	m.status = fmt.Sprintf("This replaces %d clips with one. Enter again to confirm; Esc cancels.", clips)
+
+	return true
+}
+
 func (m *model) cancelAssignment() tea.Cmd {
+	m.replaceConfirmed = ""
 	m.assigning = false
 	m.assignmentAppend = false
 	m.assignmentCue = ""

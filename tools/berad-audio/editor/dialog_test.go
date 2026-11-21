@@ -20,8 +20,8 @@ func TestInvalidInlineInputRemainsVisibleAndDoesNotMutateLibrary(t *testing.T) {
 	require.NotEmpty(t, m.inputError)
 	require.False(t, m.doc.Dirty())
 	view := ansi.Strip(m.View())
-	require.Contains(t, view, "EDITING")
 	require.Contains(t, view, "not-a-number▏")
+	require.Contains(t, view, "was not set", "the value being replaced stays visible while typing")
 	lines := strings.Split(view, "\n")
 	require.NotContains(t, strings.Join(lines[len(lines)-3:], "\n"), "not-a-number▏", "typing is never in the footer")
 	m.input = "-3"
@@ -144,7 +144,7 @@ func TestSpacePausesAmbientWithoutMarkingOrAdvancingItsFade(t *testing.T) {
 	m.routingKey(" ")
 	require.False(t, voice.Playing())
 	require.Empty(t, m.routing.selected)
-	require.Contains(t, m.transportState(), "PAUSED")
+	require.Contains(t, m.transportState(), "paused")
 	now = now.Add(time.Minute)
 	m.updateRoutingPreview()
 	require.Equal(t, envelope, m.routing.envelope)

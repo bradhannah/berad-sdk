@@ -115,7 +115,7 @@ func TestSourceChangeStopsOwnedLayersAndReloadCanRestoreThem(t *testing.T) {
 	require.NoError(t, err)
 	data[len(data)-1] ^= 1
 	require.NoError(t, os.WriteFile(m.clip.Path(), data, 0o644))
-	dispatchRune(m, 'a')
+	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.True(t, layer.stopped)
 	require.False(t, layer.voice.Active())
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyF5})

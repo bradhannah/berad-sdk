@@ -37,7 +37,7 @@ func TestCropMarkersShareArrowStepsThroughInputRouting(t *testing.T) {
 			require.Equal(t, int64(110), model.window().StartMs)
 			dispatchRune(model, 's')
 			dispatchKey(model, tea.KeyMsg{Type: tea.KeyLeft})
-			require.Equal(t, "110", model.input, "arrows move the caret once text editing owns input")
+			require.Equal(t, "0:00.110", model.input, "arrows move the caret once text editing owns input")
 			dispatchKey(model, tea.KeyMsg{Type: tea.KeyEsc})
 			if duplicate {
 				require.False(t, model.doc.Dirty(), "duplicate bounds remain a draft until Create")
@@ -73,7 +73,7 @@ func TestCropPreservesPausedTransportPositionAndResume(t *testing.T) {
 	require.Equal(t, int64(50), model.window().StartMs)
 	require.True(t, model.previewIsPaused())
 	require.Equal(t, int64(200), voice.PositionMs())
-	require.Contains(t, model.transportState(), "PAUSED")
+	require.Contains(t, model.transportState(), "paused")
 	starts := voice.starts
 	dispatchKey(model, tea.KeyMsg{Type: tea.KeySpace})
 	require.True(t, voice.Playing())
@@ -215,13 +215,13 @@ func TestVariantFocusAndEscapeDoNotSilentlySwitchRecording(t *testing.T) {
 func TestSaveShortcutProtectsDraftAndWorksFromQuitConfirmation(t *testing.T) {
 	model := fixture(t)
 	dispatchRune(model, 's')
-	model.input = "100"
+	model.input = "0.1"
 	dispatchKey(model, tea.KeyMsg{Type: tea.KeyCtrlS})
 	require.Equal(t, fieldStart, model.field)
 	require.False(t, model.doc.Dirty())
 	require.Contains(t, model.status, "Finish or cancel")
 	dispatchKey(model, tea.KeyMsg{Type: tea.KeyEnter})
-	dispatchRune(model, 'a')
+	dispatchKey(model, tea.KeyMsg{Type: tea.KeyEnter})
 	dispatchRune(model, 'q')
 	require.True(t, model.confirmQuit)
 	dispatchKey(model, tea.KeyMsg{Type: tea.KeyCtrlS})
@@ -271,7 +271,7 @@ func TestDuplicateIsolatesPreviousPreviewOwnersAndUsesItsDraftWindow(t *testing.
 	dispatchRune(model, 'p')
 	dispatchKey(model, tea.KeyMsg{Type: tea.KeySpace})
 	dispatchRune(model, 's')
-	model.input = "100"
+	model.input = "0.1"
 	dispatchKey(model, tea.KeyMsg{Type: tea.KeyEnter})
 	model.updateCropPreview(true)
 	require.Equal(t, int64(100), standalone.window.StartMs)

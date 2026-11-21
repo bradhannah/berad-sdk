@@ -35,6 +35,12 @@ func (cursor *textCursor) reset(value string) {
 	cursor.observed, cursor.offset, cursor.anchor, cursor.column = value, len(value), -1, -1
 }
 
+// selectAll starts with the whole value selected, so typing replaces it.
+func (cursor *textCursor) selectAll(value string) {
+	cursor.reset(value)
+	cursor.anchor = 0
+}
+
 func (cursor textCursor) position(value string) int {
 	if cursor.observed != value {
 		return len(value)

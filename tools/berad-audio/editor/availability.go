@@ -85,37 +85,54 @@ func sourceSignature(doc *audio.LibraryEditor, id string) string {
 	return fmt.Sprintf("%s:%d:%d", *recording.File, recording.PlaybackWindow.StartMs, recording.PlaybackWindow.EndMs)
 }
 
-// File presence is cheap to discover; decoding runs one recording at a time,
+// maxConcurrentScans bounds how many recordings are decoded at once.
+const maxConcurrentScans = 4
+
+// File presence is cheap to discover; decoding runs a few recordings at a time,
 // with cancellation and source fingerprints to reject stale scan results.
 func (m *model) prepareAvailability() {
+	m.availability = make(map[string]audio.RecordingAvailability)
+	m.restartScan(m.doc.RecordingIDs())
+}
+
+// restartScan refreshes the given recordings' cheap status and starts a new scan
+// generation over every recording still CHECKING, abandoning in-flight decodes.
+func (m *model) restartScan(ids []string) {
 	if m.cancelScan != nil {
 		m.cancelScan()
 	}
 	m.scanGeneration++
-	m.availability = make(map[string]audio.RecordingAvailability)
+	parent, cancel := context.WithCancel(context.Background())
+	m.cancelScan, m.scanContext = cancel, func() context.Context { return parent }
+	for _, id := range ids {
+		m.availability[id] = m.doc.FileAvailability(id)
+	}
 	m.scanQueue = nil
 	for _, id := range m.doc.RecordingIDs() {
-		status := m.doc.FileAvailability(id)
-		m.availability[id] = status
-		if status.State == audio.RecordingChecking {
+		if m.availability[id].State == audio.RecordingChecking {
 			m.scanQueue = append(m.scanQueue, id)
 		}
 	}
+	m.scanTotal, m.scanDone, m.scanActive = len(m.scanQueue), 0, 0
 }
 
+// scanNext tops the pool of in-flight checks back up from the queue.
 func (m *model) scanNext() tea.Cmd {
-	if len(m.scanQueue) == 0 {
-		return nil
+	var commands []tea.Cmd
+	for m.scanActive < maxConcurrentScans && len(m.scanQueue) > 0 {
+		commands = append(commands, m.startScan())
 	}
+
+	return tea.Batch(commands...)
+}
+
+func (m *model) startScan() tea.Cmd {
 	recordingID := m.scanQueue[0]
 	m.scanQueue = m.scanQueue[1:]
-	document, generation := m.doc.Clone(), m.scanGeneration
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancelScan = cancel
+	m.scanActive++
+	document, generation, ctx := m.doc.Clone(), m.scanGeneration, m.scanContext()
 
 	return func() tea.Msg {
-		defer cancel()
-
 		return availabilityMsg{generation: generation, id: recordingID, signature: sourceSignature(document, recordingID),
 			status: document.InspectRecording(ctx, recordingID)}
 	}
@@ -123,7 +140,12 @@ func (m *model) scanNext() tea.Cmd {
 
 func (m *model) acceptAvailability(message availabilityMsg) tea.Cmd {
 	if message.generation != m.scanGeneration {
-		return nil
+		return m.scanNext()
+	}
+	m.scanActive--
+	m.scanDone++
+	if m.scanActive == 0 && len(m.scanQueue) == 0 {
+		m.cancelScan() // The generation is finished; release its context.
 	}
 	if message.signature == sourceSignature(m.doc, message.id) {
 		selected := m.selectedID()
@@ -150,6 +172,57 @@ func (m *model) recheckFiles() tea.Cmd {
 	m.status = "Rechecking source files; green means playable, not listening-approved."
 
 	return tea.Batch(m.scanNext(), m.loadSelection())
+}
+
+// sourceSignatures fingerprints every recording's file and window.
+func (m *model) sourceSignatures() map[string]string {
+	signatures := make(map[string]string)
+	for _, id := range m.doc.RecordingIDs() {
+		signatures[id] = sourceSignature(m.doc, id)
+	}
+
+	return signatures
+}
+
+// recheckChanged rechecks only recordings whose source differs from before (plus
+// added ones), forgets removed ones, and drops Soundscape layers that depended on
+// them. The selection reloads when forced or when its own source changed.
+func (m *model) recheckChanged(before map[string]string, forceLoad bool) tea.Cmd {
+	changed := make(map[string]bool)
+	after := m.sourceSignatures()
+	for id, signature := range after {
+		if old, exists := before[id]; !exists || old != signature {
+			changed[id] = true
+		}
+	}
+	for id := range before {
+		if _, exists := after[id]; !exists {
+			changed[id] = true
+			delete(m.availability, id)
+		}
+	}
+	m.pruneSoundscape(changed)
+	if len(changed) > 0 {
+		m.restartScan(slices.DeleteFunc(m.doc.RecordingIDs(), func(id string) bool { return !changed[id] }))
+	}
+	m.refreshKeys()
+	command := m.scanNext()
+	if forceLoad || changed[m.recordingID()] {
+		command = tea.Batch(command, m.loadSelection())
+	}
+
+	return command
+}
+
+// pruneSoundscape closes layers whose recording changed or left their cue.
+func (m *model) pruneSoundscape(changed map[string]bool) {
+	for _, layer := range slices.Clone(m.mix) {
+		cue := m.doc.Cue(layer.cueID)
+		if changed[layer.recordingID] || layer.cueID != "" && !slices.Contains(cue.Recordings(), layer.recordingID) {
+			m.removeMixLayer(layer)
+		}
+	}
+	m.refreshMixGains()
 }
 
 func (m *model) itemRecording(id string) string {
@@ -197,10 +270,27 @@ func (m *model) workspaceIDs() []string {
 		return m.doc.Cue(m.variantCue).Recordings()
 	}
 	if m.browsingCues() {
-		return m.doc.CueIDs()
+		return m.cuesByName()
 	}
 
 	return m.doc.RecordingIDs()
+}
+
+// cuesByName lists moments by the name on screen, not by their hidden identity.
+// The order is kept until the document changes.
+func (m *model) cuesByName() []string {
+	if m.cueOrder.doc == m.doc && m.cueOrder.revision == m.doc.Revision() {
+		return m.cueOrder.ids
+	}
+	ids := m.doc.CueIDs()
+	names := make(map[string]string, len(ids))
+	for _, id := range ids {
+		names[id] = strings.ToLower(m.doc.Cue(id).Name)
+	}
+	slices.SortStableFunc(ids, func(left, right string) int { return strings.Compare(names[left], names[right]) })
+	m.cueOrder = cueOrder{doc: m.doc, revision: m.doc.Revision(), ids: ids}
+
+	return ids
 }
 
 func (m *model) refreshKeys() {
@@ -247,10 +337,10 @@ func (m *model) matchesFacet(identity, key, value string) bool {
 	if !m.browsingCues() {
 		usages = m.doc.Usages(identity)
 	}
-	if key == "category" && value == "unassigned" && len(usages) == 0 {
+	if key == facetCategory && value == "unassigned" && len(usages) == 0 {
 		return true
 	}
-	if key == "family" && !m.browsingCues() && m.doc.RecordingFamily(identity) == value {
+	if key == facetFamily && !m.browsingCues() && m.doc.RecordingFamily(identity) == value {
 		return true
 	}
 	for _, cueID := range usages {
@@ -274,9 +364,9 @@ func (m *model) matchesCueFacet(cueID, key, value string) bool {
 		// Preserve the default SFX facet for non-music/non-ambient values.
 	}
 	switch key {
-	case "category":
+	case facetCategory:
 		return category == value
-	case "family":
+	case facetFamily:
 		return classification.TargetAcousticFamily == value
 	case "phase":
 		return classification.Phase == value
@@ -308,8 +398,8 @@ func (m *model) restoreBrowseState(state browseState) {
 
 func (m *model) switchWorkspace(moments bool) tea.Cmd {
 	if moments {
-		return m.selectWorkspace(workspaceMoments)
+		return m.keySwitchWorkspace(workspaceMoments)
 	}
 
-	return m.selectWorkspace(workspaceRecordings)
+	return m.keySwitchWorkspace(workspaceRecordings)
 }

@@ -58,16 +58,21 @@ func (m *model) acceptDocument(message documentMsg) tea.Cmd {
 		return nil
 	}
 	publicationChanged := completion.PublicationChanged
+	var before map[string]string
+	if message.reload {
+		before = m.sourceSignatures() // Captured before the new document replaces the old one.
+	}
 	m.doc = completion.Document
 	message.err = completion.Err
 	if message.err != nil {
 		return m.failedDocument(message, cropCommit, publicationChanged)
 	}
 
-	return m.completeDocument(message, cropCommit, publicationChanged)
+	return m.completeDocument(message, cropCommit, publicationChanged, before)
 }
 
-func (m *model) completeDocument(message documentMsg, cropCommit, publicationChanged bool) tea.Cmd {
+func (m *model) completeDocument(message documentMsg, cropCommit, publicationChanged bool,
+	before map[string]string) tea.Cmd {
 	m.status, m.statusIsError = message.summary, false
 	if message.calibration != nil {
 		m.autoGainDraft = nil
@@ -81,7 +86,7 @@ func (m *model) completeDocument(message documentMsg, cropCommit, publicationCha
 	case cropCommit:
 		refresh = m.finishCropCommit()
 	case message.reload:
-		refresh = m.recheckFiles()
+		refresh = m.recheckChanged(before, true)
 	case selected != m.selectedID():
 		refresh = m.loadSelection()
 	}

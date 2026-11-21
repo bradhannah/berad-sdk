@@ -29,7 +29,6 @@ func (m *model) playRouting() bool {
 	}
 	m.sceneFXPreview = false
 	m.previewPaused, m.previewLoop = false, ambient
-	m.previewEndMs = m.window().EndMs
 	m.previewLabel = m.doc.Cue(cue).Name
 	if m.previewLabel == "" {
 		m.previewLabel = m.recordingID()
