@@ -22,16 +22,14 @@ const (
 )
 
 const (
-	routingMusic        = "music"
-	routingDungeon      = "dungeon"
-	routingNaval        = "naval"
-	routingEmitter      = "emitter"
-	routingMoments      = "moments"
-	routingSurface      = "surface"
-	fieldNewAmbient     = "new ambient"
-	fieldAmbientProfile = "ambient radius, fade-in ms, fade-out ms"
-	routingFilterCount  = 5
-	routingScopeCount   = 5
+	routingMusic       = "music"
+	routingDungeon     = "dungeon"
+	routingNaval       = "naval"
+	routingEmitter     = "emitter"
+	routingMoments     = "moments"
+	routingSurface     = "surface"
+	routingFilterCount = 5
+	routingScopeCount  = 5
 )
 
 type routingChoice struct {
@@ -75,8 +73,21 @@ func (m *model) routingWorkspace() bool {
 	return m.workspace == workspaceTiles || m.workspace == workspaceLocations
 }
 
+func (m *model) workspaceLocked() bool {
+	return m.assigning || m.variantCue != "" || m.picker != nil || m.crop != nil
+}
+
+// keySwitchWorkspace is a manual switch: it abandons any pending "Esc returns" jump.
+func (m *model) keySwitchWorkspace(workspace editorWorkspace) tea.Cmd {
+	if !m.workspaceLocked() {
+		m.routing.hasReturn = false
+	}
+
+	return m.selectWorkspace(workspace)
+}
+
 func (m *model) selectWorkspace(workspace editorWorkspace) tea.Cmd {
-	if m.assigning || m.variantCue != "" || m.picker != nil || m.crop != nil {
+	if m.workspaceLocked() {
 		return nil
 	}
 	m.workspaceState[m.workspace] = m.currentBrowseState()
@@ -270,11 +281,11 @@ func (m *model) routingKey(key string) tea.Cmd {
 	}
 	switch key {
 	case "1", "2", "3", "4":
-		return m.selectWorkspace(editorWorkspace(key[0] - '1'))
+		return m.keySwitchWorkspace(editorWorkspace(key[0] - '1'))
 	case keyTab:
-		return m.selectWorkspace((m.workspace + 1) % workspaceCount)
-	case "shift+tab":
-		return m.selectWorkspace((m.workspace + workspaceCount - 1) % workspaceCount)
+		return m.keySwitchWorkspace((m.workspace + 1) % workspaceCount)
+	case keyShiftTab:
+		return m.keySwitchWorkspace((m.workspace + workspaceCount - 1) % workspaceCount)
 	case "up", "k":
 		return m.move(-1)
 	case "down", "j":
@@ -350,8 +361,6 @@ func (m *model) routingKey(key string) tea.Cmd {
 		return m.history(false)
 	case "ctrl+r":
 		return m.history(true)
-	case "ctrl+s":
-		return m.save()
 	case "q":
 		return m.quit()
 	case "?":

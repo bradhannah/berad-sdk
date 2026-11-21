@@ -12,6 +12,8 @@ import (
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
+const minQuotedLength = 2
+
 type pickerEntry struct {
 	name, path string
 	directory  bool
@@ -25,8 +27,12 @@ type filePicker struct {
 
 func (m *model) openPicker() tea.Cmd {
 	m.focus = focusBrowser
-	m.picker = &filePicker{directory: filepath.Dir(m.doc.Path()), entries: nil, cursor: 0, start: 0}
-	m.readDirectory(m.picker.directory)
+	directory := m.lastPickerDirectory
+	if info, err := os.Stat(directory); directory == "" || err != nil || !info.IsDir() {
+		directory = filepath.Dir(m.doc.Path())
+	}
+	m.picker = &filePicker{directory: directory, entries: nil, cursor: 0, start: 0}
+	m.readDirectory(directory)
 	m.status = "Enter imports a file or opens a directory; p previews; / enters a path; Esc cancels."
 
 	return nil
@@ -70,6 +76,7 @@ func (m *model) readDirectory(path string) {
 		return strings.Compare(left.name, right.name)
 	})
 	m.invalidateSource(true)
+	m.lastPickerDirectory = path
 	m.picker = &filePicker{directory: path, entries: rows, cursor: 0, start: 0}
 }
 
@@ -82,6 +89,9 @@ func (m *model) pickerPath() string {
 }
 
 func (m *model) pickerKey(key tea.KeyMsg) tea.Cmd {
+	if key.Type == tea.KeyRunes && (key.Paste || len(key.Runes) > 1) {
+		return m.enterPickerPath(pastedPath(string(key.Runes)))
+	}
 	picker := m.picker
 	previousPath := m.pickerPath()
 	switch key.String() {
@@ -119,6 +129,17 @@ func (m *model) pickerKey(key tea.KeyMsg) tea.Cmd {
 	picker.start = listViewportStart(picker.start, picker.cursor, len(picker.entries), m.listHeight())
 
 	return nil
+}
+
+// pastedPath cleans a terminal drop: surrounding whitespace and one pair of quotes
+// are removed and shell-escaped spaces restored.
+func pastedPath(text string) string {
+	text = strings.TrimSpace(text)
+	if len(text) >= minQuotedLength && (text[0] == '\'' || text[0] == '"') && text[len(text)-1] == text[0] {
+		text = text[1 : len(text)-1]
+	}
+
+	return strings.ReplaceAll(text, `\ `, " ")
 }
 
 func (m *model) openPickerEntry() tea.Cmd {

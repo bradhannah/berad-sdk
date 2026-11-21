@@ -42,6 +42,13 @@ func (m *model) groupLabel(group string) string {
 	return group
 }
 
+// SliderLevels are preview-volume slider positions, each 0..10.
+type SliderLevels struct {
+	Music    int // Music slider level.
+	SFX      int // Sound-effect slider level.
+	Ambience int // Ambience slider level.
+}
+
 // Options contains presentation/project policy, never game state or saved player
 // settings. Callbacks must be deterministic and safe on the editor event loop.
 type Options struct {
@@ -49,6 +56,7 @@ type Options struct {
 	RecordingCategory func(string, audio.Recording, string) string
 	TargetPolicy      func(string, string) TargetPolicy
 	Ambient           *AmbientPreset
+	InitialSliders    *SliderLevels
 	MixLabel          string
 	SavedNotice       string
 }
@@ -86,6 +94,10 @@ func normalizedOptions(options Options) Options {
 		value := *options.Ambient
 		options.Ambient = &value
 	}
+	if options.InitialSliders != nil {
+		value := *options.InitialSliders
+		options.InitialSliders = &value
+	}
 
 	return options
 }
@@ -95,6 +107,13 @@ func validateOptions(doc *audio.LibraryEditor, options Options) error {
 		value := options.SliderGain(level)
 		if !validUnitGain(value) {
 			return fmt.Errorf("%w: slider mapping must return finite values in [0,1]", audio.ErrLibrary)
+		}
+	}
+	if levels := options.InitialSliders; levels != nil {
+		for _, level := range []int{levels.Music, levels.SFX, levels.Ambience} {
+			if level < 0 || level > maximumSliderLevel {
+				return fmt.Errorf("%w: initial slider levels must be within 0..%d", audio.ErrLibrary, maximumSliderLevel)
+			}
 		}
 	}
 	if preset := options.Ambient; preset != nil {

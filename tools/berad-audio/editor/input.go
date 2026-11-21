@@ -1,6 +1,7 @@
 package editorui
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
+
+const minReplaceClips = 2
 
 const (
 	inputTyping = iota
@@ -259,6 +262,9 @@ func (m *model) acceptAssignment() tea.Cmd {
 
 		return nil
 	}
+	if m.confirmReplace(m.selectedID()) {
+		return nil
+	}
 	var err error
 	if m.assignmentAppend {
 		err = m.doc.AppendCueRecording(m.assignmentCue, m.recordingID())
@@ -275,7 +281,24 @@ func (m *model) acceptAssignment() tea.Cmd {
 	return m.cancelAssignment()
 }
 
+// confirmReplace guards a plain assignment that would drop several ordered clips; it
+// reports true while the first Enter is still waiting for its confirming second one.
+func (m *model) confirmReplace(selected string) bool {
+	clips := len(m.doc.Cue(m.assignmentCue).Recordings())
+	if m.assignmentAppend || clips < minReplaceClips {
+		return false
+	}
+	if m.replaceConfirmed == selected {
+		return false
+	}
+	m.replaceConfirmed = selected
+	m.status = fmt.Sprintf("This replaces %d clips with one. Enter again to confirm; Esc cancels.", clips)
+
+	return true
+}
+
 func (m *model) cancelAssignment() tea.Cmd {
+	m.replaceConfirmed = ""
 	m.assigning = false
 	m.assignmentAppend = false
 	m.assignmentCue = ""

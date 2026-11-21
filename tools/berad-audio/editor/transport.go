@@ -195,17 +195,46 @@ func (m *model) infoKey(key string) {
 	case keyEscape, keyEnter, "?":
 		m.infoDialog = nil
 	case "up":
-		m.infoDialog.scroll = max(0, m.infoDialog.scroll-1)
+		m.scrollInfo(-1)
 	case keyDown:
-		m.infoDialog.scroll = min(len(m.infoDialog.lines)-1, m.infoDialog.scroll+1)
+		m.scrollInfo(1)
+	case keyPageUp:
+		m.scrollInfo(-m.infoPage())
+	case keyPageDown:
+		m.scrollInfo(m.infoPage())
+	case "home":
+		m.infoDialog.scroll = 0
+	case "end":
+		m.infoDialog.scroll, _ = m.infoBounds()
 	}
+}
+
+// infoBounds returns the largest top row and the page size of the open info dialog,
+// measured exactly as overlayDialog wraps and fits it.
+func (m *model) infoBounds() (int, int) {
+	width := min(maxDialogWidth, m.width-editorDialogMargin)
+	dialog, _ := m.dialogContent(width - panelEdges)
+	layout := m.layoutDialog(dialog, width)
+
+	return max(0, len(layout.rows)-layout.capacity), layout.capacity
+}
+
+func (m *model) infoPage() int {
+	_, page := m.infoBounds()
+
+	return page
+}
+
+func (m *model) scrollInfo(delta int) {
+	limit, _ := m.infoBounds()
+	m.infoDialog.scroll = max(0, min(limit, m.infoDialog.scroll+delta))
 }
 
 func (m *model) openHelp() {
 	lines := []string{
-		"BROWSING AND PLAYBACK", "1–4 / Tab: workspace · /: search · Ctrl+F: filter",
+		"BROWSING AND PLAYBACK", "1–4 / Tab: workspace · /: search · Ctrl+F: filter · F5: recheck files · q: quit",
 		"Enter / p: play or restart · Space: pause/resume · Ctrl+x: stop all (including while typing)",
-		"n: next clip in Moments · Shift+n: recording note",
+		"n: next clip in Moments, new empty recording in Recordings · Shift+n: recording note",
 		"Ctrl+S: save library · u / Ctrl+R: undo / redo", "",
 		"TILES AND LOCATIONS", "f: choose ambient sound or music · r: change recording · i: import recording file",
 		"p: preview ambience · Shift+P: preview footstep · n: next footstep",
@@ -213,8 +242,10 @@ func (m *model) openHelp() {
 		"Shift+S: edit footstep sequence · Shift+D: default surface", "B: sound settings · Ctrl+A: new ambient sound",
 		"Left/Right: preview distance · Shift+L: preview leaving range", "F: animation details · U: used by · o: open sound",
 		"", "RECORDINGS AND MOMENTS", "f: file / recording picker · d: details · w: waveform · m: Soundscape",
-		"g / +/-: shared gain · i/o: trim markers · s/e: exact trim times",
-		"[/]: choose trim marker · arrows: nudge · z: zoom · t: suggest trim · r: reset trim",
+		"g / +/-: gain. Moments: this moment's own gain · Recordings: the shared recording's calibration",
+		"l: loop on/off · Shift+S: whole file / trimmed region · i/o: trim markers · s/e: exact trim times",
+		"[/]: choose trim marker · Left/Right: seek (Shift: bigger) · arrows nudge a marker",
+		"z: zoom · t: suggest trim · r: reset trim",
 		"Regions are drafts: Tab/Enter selects Apply or Cancel; p auditions; Escape discards",
 		"F5 in a region reloads its source while retaining bounds for review · ? shows draft/source details",
 		"Shift+K: keywords · Shift+H: trigger · Shift+N: note · C: classification",

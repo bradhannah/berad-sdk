@@ -200,8 +200,6 @@ func (m *model) mixKey(key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "q":
 		return m.quit()
-	case "ctrl+s":
-		return m.save()
 	case keyEscape, "m", keyTab:
 		m.focus = focusBrowser // The pane remains visible while browsing.
 	case "d":
@@ -292,16 +290,20 @@ func (m *model) stopAll() {
 	}
 	m.previewPaused, m.routing.fading = false, false
 	m.autoPreview, m.sceneFXPreview = false, false
-	m.pendingAmbient = nil
+	if m.pendingAmbient != nil {
+		m.pendingAmbient, m.focus = nil, focusBrowser // Stopping cancels the replacement choice.
+	}
 	m.report(m.preview.Close())
 	for _, layer := range m.mix {
 		m.report(layer.voice.Close())
 		layer.stopped, layer.paused = true, false
 	}
-	m.focus = focusBrowser
 }
 
 func (m *model) clearSoundscape() {
 	m.stopAll()
 	m.mix, m.mixCursor = nil, 0
+	if m.focus == focusMix {
+		m.focus = focusBrowser // The emptied pane has nothing left to control.
+	}
 }

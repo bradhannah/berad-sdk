@@ -229,10 +229,12 @@ func (m *model) applyRoutingChoice(identity string) tea.Cmd {
 		return nil
 	}
 	m.routing.menu = nil
+	clear(m.routing.selected)
 	m.refreshKeys()
+	reload := m.loadSelection()
 	m.status = "Assignment updated. Ctrl+S saves; u undoes the entire edit."
 
-	return m.loadSelection()
+	return reload
 }
 
 func (m *model) applyTileRoutingChoice(routing *audio.Routing, identity string) {

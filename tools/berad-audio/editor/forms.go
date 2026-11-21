@@ -212,7 +212,7 @@ func (m *model) applyForm() tea.Cmd {
 		return nil
 	}
 	if form.kind == formNewAmbient {
-		cueID := "ambient/" + strings.TrimSpace(form.fields[newIDField].value)
+		cueID := m.options.Ambient.CuePrefix + strings.TrimSpace(form.fields[newIDField].value)
 		m.form, m.routing.menu = nil, nil
 		m.selectWorkspace(workspaceMoments)
 		m.search, m.filter = "", filterAll
@@ -302,10 +302,21 @@ func (m *model) adjustFormField(increase bool) {
 	if field.step > 0 {
 		value, err := strconv.ParseFloat(field.value, 64)
 		if err == nil {
-			field.value = strconv.FormatFloat(math.Max(0, value+float64(direction)*field.step), 'f', -1, 64)
+			field.value = formatStepped(math.Max(0, value+float64(direction)*field.step), field.step)
 			m.updateTileOverrideMode()
 		}
 	}
+}
+
+// formatStepped rounds away float noise (1.1+0.1) to the step's own precision.
+func formatStepped(value, step float64) string {
+	precision := 0
+	if step < 1 {
+		precision = int(math.Ceil(-math.Log10(step)))
+	}
+	scale := math.Pow10(precision)
+
+	return strconv.FormatFloat(math.Round(value*scale)/scale, 'f', -1, 64)
 }
 
 func (m *model) formTextKey(key tea.KeyMsg) tea.Cmd {

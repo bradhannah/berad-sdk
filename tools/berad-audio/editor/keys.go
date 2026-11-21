@@ -19,7 +19,8 @@ const (
 )
 
 func (m *model) key(key tea.KeyMsg) tea.Cmd {
-	if key.Type == tea.KeyRunes && !key.Alt && !m.typing() && (key.Paste || len(key.Runes) != 1) {
+	if key.Type == tea.KeyRunes && !key.Alt && !m.typing() && m.inputOwner() != ownerFiles &&
+		(key.Paste || len(key.Runes) != 1) {
 		m.status, m.statusIsError = "Focus a text field before entering text; no shortcut was executed.", false
 
 		return nil // Pasting outside a text owner never executes a shortcut macro.
@@ -142,8 +143,6 @@ func (m *model) browserKey(key string) tea.Cmd {
 	switch key {
 	case "q":
 		return m.quit()
-	case keySave:
-		return m.save()
 	case "up", "k":
 		return m.move(-1)
 	case keyDown, "j":
@@ -157,17 +156,17 @@ func (m *model) browserKey(key string) tea.Cmd {
 
 		return m.move(m.listHeight())
 	case keyTab:
-		return m.selectWorkspace((m.workspace + 1) % workspaceCount)
+		return m.keySwitchWorkspace((m.workspace + 1) % workspaceCount)
 	case keyShiftTab:
-		return m.selectWorkspace((m.workspace + workspaceCount - 1) % workspaceCount)
+		return m.keySwitchWorkspace((m.workspace + workspaceCount - 1) % workspaceCount)
 	case "1":
 		return m.switchWorkspace(false)
 	case "2":
 		return m.switchWorkspace(true)
 	case "3":
-		return m.selectWorkspace(workspaceTiles)
+		return m.keySwitchWorkspace(workspaceTiles)
 	case "4":
-		return m.selectWorkspace(workspaceLocations)
+		return m.keySwitchWorkspace(workspaceLocations)
 	case "U":
 		return m.openRoutingUsages()
 	case "B":
@@ -209,10 +208,10 @@ func (m *model) browserKey(key string) tea.Cmd {
 		m.stopAll()
 	case "S":
 		m.fullSource = !m.fullSource
-		m.play()
+		m.applyPlaybackToggle(map[bool]string{true: "Whole file.", false: "Trimmed region."}[m.fullSource])
 	case "l":
 		m.looping = !m.looping
-		m.play()
+		m.applyPlaybackToggle(map[bool]string{true: "Loop on.", false: "Loop off."}[m.looping])
 	case "+", "=":
 		m.adjustGain(1)
 	case "-":
@@ -304,6 +303,21 @@ func (m *model) browserKey(key string) tea.Cmd {
 	return nil
 }
 
+// applyPlaybackToggle makes a loop/whole-file flip take effect: idle previews only
+// report it, while a playing one restarts and returns to where it was.
+func (m *model) applyPlaybackToggle(notice string) {
+	voice := m.previewVoice()
+	if !voice.Playing() {
+		m.status, m.statusIsError = notice, false
+
+		return
+	}
+	position := voice.PositionMs()
+	if m.play() {
+		m.report(m.previewVoice().SeekMs(position))
+	}
+}
+
 func (m *model) move(delta int) tea.Cmd {
 	if m.routingWorkspace() {
 		m.routing.footsteps = false
@@ -327,17 +341,36 @@ func (m *model) quit() tea.Cmd {
 	return tea.Quit
 }
 
-func (m *model) history(redo bool) tea.Cmd {
+// undoOrRedo applies one history step and returns the status text for its outcome.
+func (m *model) undoOrRedo(redo bool) (bool, string) {
 	if redo {
-		m.doc.Redo()
-	} else {
-		m.doc.Undo()
+		if m.doc.Redo() {
+			return true, "Redone."
+		}
+
+		return false, "Nothing to redo."
+	}
+	if m.doc.Undo() {
+		return true, "Undone."
+	}
+
+	return false, "Nothing to undo."
+}
+
+func (m *model) history(redo bool) tea.Cmd {
+	before, selected, recording := m.sourceSignatures(), m.selectedID(), m.recordingID()
+	applied, done := m.undoOrRedo(redo)
+	if !applied {
+		m.status, m.statusIsError = done, false
+
+		return nil
 	}
 	m.refreshKeys()
-	m.clearSoundscape()
-	command := m.recheckFiles()
+	command := m.recheckChanged(before, m.selectedID() != selected || m.recordingID() != recording)
+	m.preview.SetGain(m.livePreviewGain())
+	m.status, m.statusIsError = done, false
 	if len(m.doc.RetainedImports()) != 0 {
-		m.status = "History restored; copied import files remain on disk. Details lists unassigned retained files."
+		m.status += " Copied import files remain on disk; Details lists unassigned retained files."
 	}
 
 	return command
