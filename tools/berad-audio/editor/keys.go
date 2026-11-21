@@ -1,8 +1,8 @@
 package editorui
 
 import (
+	"fmt"
 	"math"
-	"strconv"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -217,7 +217,9 @@ func (m *model) browserKey(key string) tea.Cmd {
 	case "-":
 		m.adjustGain(-1)
 	case "g":
-		m.beginInput(fieldGain, "")
+		m.beginGainInput()
+	case "I":
+		m.detailsFull, m.detailsScroll = !m.detailsFull, 0
 	case "ctrl+l":
 		m.beginLicenseEdit()
 	case "v":
@@ -239,12 +241,12 @@ func (m *model) browserKey(key string) tea.Cmd {
 	case "s":
 		if m.beginCrop() {
 			m.focusCropField(m.cropFieldCount() - cropBoundCount)
-			m.beginInput(fieldStart, strconv.FormatInt(m.window().StartMs, 10))
+			m.beginBoundInput(fieldStart)
 		}
 	case "e":
 		if m.beginCrop() {
 			m.focusCropField(m.cropFieldCount() - 1)
-			m.beginInput(fieldEnd, strconv.FormatInt(m.window().EndMs, 10))
+			m.beginBoundInput(fieldEnd)
 		}
 	case keyLeft:
 		m.nudge(-fineSeekMs)
@@ -326,6 +328,7 @@ func (m *model) move(delta int) tea.Cmd {
 	m.browserStart = m.browserWindowStart()
 	m.marker = 0
 	m.detailsScroll = 0
+	m.status, m.statusIsError = "", false // The message line is about the current selection.
 
 	return m.loadSelection()
 }
@@ -376,37 +379,58 @@ func (m *model) history(redo bool) tea.Cmd {
 	return command
 }
 
+// A run of +/- presses on one item replaces its own previous step, so the run
+// is a single Undo entry instead of one per keypress.
 func (m *model) adjustGain(direction float64) {
+	identity := m.selectedID()
+	var value float64
 	if m.browsingCues() {
-		cue := m.doc.Cue(m.selectedID())
-		m.setGain(math.Max(0, math.Min(1, cue.VolumeModifier+direction*cueGainStep)))
-
-		return
+		stepped := m.doc.Cue(identity).VolumeModifier + direction*cueGainStep
+		value = math.Max(0, math.Min(1, math.Round(stepped*percentPerUnit)/percentPerUnit))
+	} else {
+		if gain := m.doc.Recording(m.recordingID()).CalibrationGainDB; gain != nil {
+			value = *gain
+		}
+		value = math.Max(minimumCalibration, math.Min(maximumCalibration, value+direction*calibrationStep))
 	}
-	recording := m.doc.Recording(m.recordingID())
-	value := 0.0
-	if recording.CalibrationGainDB != nil {
-		value = *recording.CalibrationGainDB
+	if m.gainRun.identity == identity && m.gainRun.revision == m.doc.Revision() {
+		m.doc.Undo()
 	}
-	m.setGain(math.Max(minimumCalibration, math.Min(maximumCalibration, value+direction*calibrationStep)))
+	if m.setGain(value) {
+		m.gainRun = gainRun{identity: identity, revision: m.doc.Revision()}
+	}
 }
 
-func (m *model) setGain(value float64) {
+// setGain changes a moment's volume or a recording's level and says so.
+func (m *model) setGain(value float64) bool {
 	if m.assigning {
 		m.status = "Confirm the assignment before editing."
 
-		return
+		return false
 	}
+	var err error
+	notice := "✓ Volume " + percent(value)
 	if m.browsingCues() {
 		cue := m.doc.Cue(m.selectedID())
 		cue.VolumeModifier = value
-		m.report(m.doc.SetCue(m.selectedID(), cue))
+		err = m.doc.SetCue(m.selectedID(), cue)
 	} else {
 		recording := m.doc.Recording(m.recordingID())
+		notice = fmt.Sprintf("✓ Level %+.1f dB", value)
+		if recording.CalibrationMode() == audio.CalibrationAuto {
+			notice += " (auto off)"
+		}
 		recording.CalibrationGainDB = &value
 		recording.CalibrationPolicy = audio.CalibrationManual
-		m.report(m.doc.SetRecording(m.recordingID(), recording))
+		err = m.doc.SetRecording(m.recordingID(), recording)
 	}
+	m.report(err)
+	if err != nil {
+		return false
+	}
+	m.status, m.statusIsError = notice+" · u undoes", false
 	m.preview.SetGain(m.livePreviewGain())
 	m.refreshMixGains()
+
+	return true
 }

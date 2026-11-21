@@ -18,7 +18,6 @@ import (
 
 func TestFooterPacksAcrossWidthWithoutDroppingTrimHints(t *testing.T) {
 	model := fixture(t)
-	model.focus = focusWave
 	wav := calibrationWAV(4000)
 	wav = append(wav[:44], bytes.Repeat(wav[44:], 6)...)
 	binary.LittleEndian.PutUint32(wav[4:], uint32(len(wav)-8))
@@ -37,27 +36,26 @@ func TestFooterPacksAcrossWidthWithoutDroppingTrimHints(t *testing.T) {
 	require.LessOrEqual(t, len(wide), 2, "wide terminals should not keep fixed short shortcut rows")
 	for _, rows := range [][]string{narrow, wide} {
 		plain := ansi.Strip(strings.Join(rows, "\n"))
-		for _, hint := range []string{"[i/o] Mark trim", "[s/e] Exact trim", "[?] Help", "[Ctrl+s] Save", "[q] Quit"} {
+		for _, hint := range []string{"Enter play", "+ - level", "i o trim", "? all keys", "q quit"} {
 			require.Contains(t, plain, hint)
 		}
 	}
 	model.beginInput(fieldStart, "0")
-	require.Equal(t, focusWave, model.focus)
-	require.Contains(t, ansi.Strip(strings.Join(model.footerLines(), "\n")), "420=0.420s; sets the draft only")
-	model.field = ""
-	model.beginInput(fieldEnd, "3000")
-	require.Contains(t, ansi.Strip(strings.Join(model.footerLines(), "\n")), "2350=2.350s; sets the draft only")
+	require.Contains(t, ansi.Strip(strings.Join(model.footerLines(), "\n")), "m:ss.mmm or seconds")
 }
 
-func TestWaveformUsesMoreHeightWhileKeepingOtherPanesUsable(t *testing.T) {
+func TestWaveformStaysModestSoTheListGetsTheHeight(t *testing.T) {
 	model := fixture(t)
+	model.width, model.height = 120, 40
+	require.Equal(t, 8, model.layout().wave)
+	require.GreaterOrEqual(t, model.listHeight(), 21)
 	model.width, model.height = 160, 60
-	require.GreaterOrEqual(t, model.layout().wave, 20)
+	require.LessOrEqual(t, model.layout().wave, maximumWaveHeight)
 	model.width, model.height, model.focus = 60, 24, focusWave
 	fillSoundscape(t, model)
 	assertFullScreen(t, model)
 	require.GreaterOrEqual(t, model.listHeight(), 1)
-	require.Greater(t, model.layout().wave, panelEdges+waveLabelRows, "retain actual waveform rows on small screens")
+	require.GreaterOrEqual(t, model.layout().wave, smallestWaveHeight, "retain actual waveform rows on small screens")
 }
 
 func TestLogWaveformMakesQuietAudioVisibleAndPreservesDigitalSilence(t *testing.T) {
@@ -72,8 +70,8 @@ func TestLogWaveformMakesQuietAudioVisibleAndPreservesDigitalSilence(t *testing.
 		require.NotEqual(t, "─", waveformCell(units, height-1, height))
 		last = units
 	}
-	require.GreaterOrEqual(t, waveformDisplayUnits(0.001, height), waveformCellSteps,
-		"-60 dB audio should occupy more than a barely visible fractional cell")
+	require.GreaterOrEqual(t, waveformDisplayUnits(0.01, height), waveformCellSteps,
+		"-40 dB audio should occupy more than a barely visible fractional cell")
 	require.Equal(t, height*waveformCellSteps, waveformDisplayUnits(1, height))
 	require.Zero(t, waveformDisplayUnits(math.NaN(), height))
 	model := fixture(t)

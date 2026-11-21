@@ -60,6 +60,7 @@ func TestDetailsSeparateColouredLabelsAndValues(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.ANSI256)
 	t.Cleanup(func() { lipgloss.SetColorProfile(before) })
 	m := fixture(t)
+	m.detailsFull = true
 	lines := m.detailLines(100)
 	joined := strings.Join(lines, "\n")
 	require.Contains(t, joined, m.colors.detailLabel.Render("Recording: "))

@@ -107,6 +107,7 @@ func TestFocusedDetailsAndWaveformArrowsDoNotBrowse(t *testing.T) {
 	model := fixture(t)
 	selected := model.selectedID()
 	model.browserKey("d")
+	model.detailsFull = true
 	model.key(tea.KeyMsg{Type: tea.KeyDown})
 	require.Equal(t, selected, model.selectedID())
 	require.Greater(t, model.detailsScroll, 0)

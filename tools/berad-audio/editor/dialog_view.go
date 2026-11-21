@@ -43,12 +43,6 @@ func (m *model) inlineInput() bool {
 	}
 }
 
-func (m *model) inputLines(width int) []string {
-	rows, _ := m.inputRows(width)
-
-	return rows
-}
-
 func (m *model) inputRows(width int) ([]string, int) {
 	label := "EDITING " + strings.ToUpper(m.fieldLabel())
 	value := m.inputText.render(m.input, m.colors.selected.Render)

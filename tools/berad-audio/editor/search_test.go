@@ -37,34 +37,35 @@ func TestFilterSearchesDescriptionsKeywordsAndLinkedUsages(t *testing.T) {
 	require.NotContains(t, m.keys, "sfx/SoundHeal")
 }
 
-func TestExistingFilterUsesConventionalBackspaceClearAndCancel(t *testing.T) {
+func TestFilterNarrowsWhileTypedAndEscapeRestoresIt(t *testing.T) {
 	m := fixture(t)
 	m.search = "family:magic"
 	m.refreshKeys()
+	matches := len(m.keys)
 	m.browserKey("/")
-	view := ansi.Strip(m.View())
-	require.Contains(t, view, "EDIT FILTER")
-	require.Contains(t, view, "FILTER › family:magic▏")
-	m.key(tea.KeyMsg{Type: tea.KeyBackspace})
-	require.Equal(t, "family:magi", m.input)
+	require.Contains(t, ansi.Strip(m.View()), "/ family:magic▏")
 	m.key(tea.KeyMsg{Type: tea.KeyCtrlU})
-	require.Empty(t, m.input)
+	require.Empty(t, m.search, "the list follows the draft as it is typed")
+	require.Len(t, m.keys, len(m.doc.RecordingIDs()))
 	m.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("door")})
 	m.key(tea.KeyMsg{Type: tea.KeyBackspace})
-	require.Equal(t, "doo", m.input)
 	m.key(tea.KeyMsg{Type: tea.KeySpace})
 	m.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("creak")})
 	require.Equal(t, "doo creak", m.input, "terminal space keys must work in multiword searches")
 	m.key(tea.KeyMsg{Type: tea.KeyEsc})
-	require.Equal(t, "family:magic", m.search, "draft edits do not change the applied filter")
+	require.Equal(t, "family:magic", m.search, "Escape puts the earlier filter back")
+	require.Len(t, m.keys, matches)
 	m.browserKey("/")
+	m.key(tea.KeyMsg{Type: tea.KeyCtrlU})
+	m.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("familly:magic")})
+	require.Contains(t, m.status, `No filter is called "familly"`)
 	m.key(tea.KeyMsg{Type: tea.KeyCtrlU})
 	m.key(tea.KeyMsg{Type: tea.KeyEnter})
 	require.Empty(t, m.search)
 	require.Len(t, m.keys, len(m.doc.RecordingIDs()))
 	m.beginSearch()
 	m.input = strings.Repeat("very long keyword ", 20)
-	line := m.searchLine(30)
+	line := m.browserSearchLines(30)[0]
 	require.Equal(t, 30, ansi.StringWidth(line))
 	require.Contains(t, line, "▏", "long drafts keep the insertion position visible")
 }
@@ -78,7 +79,7 @@ func TestShiftArrowsPageBrowserAndDetailsWithoutEditingVariants(t *testing.T) {
 	m.key(tea.KeyMsg{Type: tea.KeyShiftUp})
 	require.Zero(t, m.cursor)
 	m.selectID("healing_01")
-	m.focus = focusDetails
+	m.focus, m.detailsFull = focusDetails, true
 	m.key(tea.KeyMsg{Type: tea.KeyShiftDown})
 	require.Positive(t, m.detailsScroll)
 	m.key(tea.KeyMsg{Type: tea.KeyShiftUp})

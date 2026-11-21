@@ -25,6 +25,7 @@ func TestImportReceiptRemainsVisibleAfterUndo(t *testing.T) {
 	finish(m, m.history(false))
 	require.Contains(t, m.status, "remain on disk")
 	require.FileExists(t, receipt.Path)
+	m.detailsFull = true
 	require.Contains(t, strings.Join(m.detailLines(1000), "\n"), "Unassigned file:")
 }
 

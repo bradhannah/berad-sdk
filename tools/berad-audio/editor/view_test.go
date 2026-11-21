@@ -38,10 +38,9 @@ func TestResponsiveLayoutUsesEveryRowAndKeepsHintsAtBottom(t *testing.T) {
 	model.width, model.height = 60, 24
 	model.beginDuplicate()
 	assertFullScreen(t, model)
-	model.focusCropField(model.cropFieldCount())
-	require.Contains(t, ansi.Strip(model.View()), "Create clip")
-	model.focusCropField(model.cropFieldCount() + 1)
-	require.Contains(t, ansi.Strip(model.View()), "Cancel")
+	footer := ansi.Strip(strings.Join(model.footerLines(), "\n"))
+	require.Contains(t, footer, "c create")
+	require.Contains(t, footer, "Esc discard")
 }
 
 func assertFullScreen(t *testing.T, model *model) {
@@ -51,7 +50,7 @@ func assertFullScreen(t *testing.T, model *model) {
 	for index, line := range lines {
 		require.Equal(t, model.width, ansi.StringWidth(line), "row %d", index)
 	}
-	require.Contains(t, ansi.Strip(lines[len(lines)-1]), "[")
+	require.NotEmpty(t, strings.TrimSpace(ansi.Strip(lines[len(lines)-1])), "hints stay on the last row")
 }
 
 func TestStatusAndKeyColoursRemainDistinctFromLabels(t *testing.T) {
@@ -62,15 +61,15 @@ func TestStatusAndKeyColoursRemainDistinctFromLabels(t *testing.T) {
 	model.focus = focusWave
 	footer := strings.Join(model.footerLines(), "\n")
 	require.Contains(t, footer, "\x1b[")
-	require.Contains(t, ansi.Strip(footer), "[i/o] Mark trim")
-	require.Contains(t, ansi.Strip(footer), "[s/e] Exact trim")
-	require.Contains(t, ansi.Strip(footer), "[?] Help")
-	require.Contains(t, ansi.Strip(model.View()), "● READY")
+	require.Contains(t, ansi.Strip(footer), "i o mark trim")
+	require.Contains(t, ansi.Strip(footer), "s e type times")
+	require.Contains(t, ansi.Strip(footer), "? all keys")
+	require.Contains(t, ansi.Strip(model.View()), "● ready")
 	model.filter = filterMissing
 	model.refreshKeys()
-	require.Contains(t, ansi.Strip(model.View()), "○ NO FILE")
-	require.Contains(t, ansi.Strip(model.View()), "repair assignment")
+	require.Contains(t, ansi.Strip(model.View()), "· no audio yet")
+	require.Contains(t, ansi.Strip(model.View()), "No audio yet.")
 	model.focus = focusMix
-	require.Contains(t, ansi.Strip(strings.Join(model.footerLines(), "\n")), "[u] Mute")
-	require.NotContains(t, ansi.Strip(strings.Join(model.footerLines(), "\n")), "[u] Undo")
+	require.Contains(t, ansi.Strip(strings.Join(model.footerLines(), "\n")), "u Mute")
+	require.NotContains(t, ansi.Strip(strings.Join(model.footerLines(), "\n")), "u Undo")
 }

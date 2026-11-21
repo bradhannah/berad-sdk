@@ -1,103 +1,101 @@
 package editorui
 
 import (
-	"fmt"
 	"math"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
-const waveLabelRows = 3
-const zoomRadiusMs = 250
-const waveformFloorDB = -72.0
-const waveformDBMultiplier = 20.0
-const waveformCellSteps = 8
+const (
+	zoomRadiusMs         = 250
+	closeUpRadiusMs      = 2000
+	closeUpWidth         = 38
+	closeUpMinimumWidth  = 100
+	waveformFloorDB      = -48.0
+	waveformDBMultiplier = 20.0
+	waveformCellSteps    = 8
+	waveSlices           = 8
+	rulerLabelSpacing    = 14
+	rulerPreciseSpanMs   = 10 * msPerSecond
+)
 
 func (m *model) waveform(width, height int) string {
-	inside := width - panelEdges
+	title := m.colors.title.Render("WAVEFORM")
 	if m.loading {
-		return m.panel("WAVEFORM · analyzing", []string{"Decoding in background; browsing remains responsive."},
-			width, height, m.panelFocused(focusWave))
+		return m.panel(title, []string{m.colors.dim.Render(" Loading…")}, width, height, m.panelFocused(focusWave))
 	}
 	if m.clip == nil {
-		return m.panel("WAVEFORM · no playable source", []string{
-			"Choose a recording with an audio file. Missing items can be repaired with f."},
-			width, height, m.panelFocused(focusWave))
+		return m.panel(title, []string{m.colors.dim.Render(" No audio to show.")}, width, height,
+			m.panelFocused(focusWave))
 	}
-	window := m.window()
+	// While a trim marker is selected its close-up sits beside the whole file.
+	if m.crop != nil && m.marker != 0 && width >= closeUpMinimumWidth {
+		overview := m.wavePane(title+m.colors.dim.Render("  dim = cut off"), 0, m.clip.DurationMs(),
+			width-closeUpWidth-paneGap, height, false)
+
+		return lipgloss.JoinHorizontal(lipgloss.Top, overview, strings.Repeat(" ", paneGap), m.closeUpPane(height))
+	}
+	from, until := m.waveRange()
+
+	return m.wavePane(title+m.colors.dim.Render(m.waveNote()), from, until, width, height, m.panelFocused(focusWave))
+}
+
+func (m *model) waveNote() string {
+	switch {
+	case m.zoom:
+		return "  zoomed · z shows it all"
+	case m.fullSource:
+		return "  playing the whole file"
+	case m.crop != nil:
+		return "  dim = cut off"
+	}
+
+	return ""
+}
+
+func (m *model) waveRange() (int64, int64) {
 	from, until := int64(0), m.clip.DurationMs()
-	if m.zoom {
-		center := m.position
-		if m.marker == markerStart {
-			center = window.StartMs
-		}
-		if m.marker == markerEnd {
-			center = window.EndMs
-		}
-		from, until = max(0, center-zoomRadiusMs), min(until, center+zoomRadiusMs)
+	if !m.zoom {
+		return from, until
 	}
-	mode := "selection"
-	if m.fullSource {
-		mode = "full source"
+	center := m.markerPosition(m.position)
+
+	return max(0, center-zoomRadiusMs), min(until, center+zoomRadiusMs)
+}
+
+func (m *model) markerPosition(fallback int64) int64 {
+	switch m.marker {
+	case markerStart:
+		return m.window().StartMs
+	case markerEnd:
+		return m.window().EndMs
 	}
-	state := "stopped"
-	if m.previewVoice().Playing() {
-		state = "playing"
-	} else if m.previewVoice().Active() {
-		state = "paused/ended"
-	}
-	focus := "source cursor"
-	if m.previewVoice().Active() {
-		focus = "preview selection"
-	}
+
+	return fallback
+}
+
+func (m *model) closeUpPane(height int) string {
+	name := "END"
 	if m.marker == markerStart {
-		focus = "START marker"
+		name = "START"
 	}
-	if m.marker == markerEnd {
-		focus = "END marker"
-	}
-	if m.crop != nil && m.crop.field >= m.cropFieldCount() {
-		focus = "Apply/Cancel"
-	}
-	title := fmt.Sprintf("WAVEFORM · %s · %s · arrows: %s (10 ms)", mode, state, focus)
-	label := fmt.Sprintf("Start %d · End %d ms · Selected %d ms · Position %.3fs", window.StartMs, window.EndMs,
-		window.EndMs-window.StartMs, float64(m.position)/msPerSecond)
-	lines := []string{fit(label, inside)}
-	rows := height - panelEdges - waveLabelRows
-	if rows > 0 {
-		lines = append(lines, m.overview(window, from, until, inside))
-		lines = append(lines, m.drawWaveform(window, m.position, from, until, inside, rows)...)
-	}
-	lines = append(lines, fit(fmt.Sprintf("%.3fs — %.3fs · %s · source dB view −72…0 (display only)",
-		float64(from)/msPerSecond, float64(until)/msPerSecond, zoomLabel(m.zoom)), inside))
+	center := m.markerPosition(0)
+	from, until := max(0, center-closeUpRadiusMs), min(m.clip.DurationMs(), center+closeUpRadiusMs)
 
-	return m.panel(title, lines, width, height, m.panelFocused(focusWave))
+	title := m.colors.title.Render(name) + m.colors.dim.Render("  close-up")
+
+	return m.wavePane(title, from, until, closeUpWidth, height, false)
 }
 
-func zoomLabel(zoom bool) string {
-	if zoom {
-		return "ZOOM · follows arrow target"
-	}
+func (m *model) wavePane(title string, from, until int64, width, height int, active bool) string {
+	inside := width - panelEdges
+	lines := m.drawWaveform(m.window(), m.position, from, until, inside, height-panelEdges-1)
+	lines = append(lines, m.colors.dim.Render(timeRuler(from, until, inside)))
 
-	return "FULL"
-}
-
-func (m *model) overview(window audio.PlaybackWindow, from, until int64, width int) string {
-	var line strings.Builder
-	for column := range width {
-		position := int64(column) * max(1, m.clip.DurationMs()) / int64(width)
-		glyph, style := "─", m.colors.dim
-		if position >= window.StartMs && position < window.EndMs {
-			glyph, style = "━", m.colors.ready
-		}
-		if m.zoom && position >= from && position < until {
-			glyph, style = "═", m.colors.focus
-		}
-		_, _ = line.WriteString(style.Render(glyph))
-	}
-
-	return line.String()
+	return m.panel(title, lines, width, height, active)
 }
 
 func (m *model) drawWaveform(window audio.PlaybackWindow, position, from, until int64, width, height int) []string {
@@ -106,8 +104,7 @@ func (m *model) drawWaveform(window audio.PlaybackWindow, position, from, until 
 	for column := range width {
 		start := from + int64(column)*span/int64(width)
 		end := from + int64(column+1)*span/int64(width)
-		peak := m.clip.PeakBetween(start, end)
-		units := waveformDisplayUnits(peak, height)
+		units := waveformDisplayUnits(m.columnLevel(start, end), height)
 		for row := range height {
 			glyph := waveformCell(units, row, height)
 			style := m.colors.dim
@@ -130,9 +127,25 @@ func (m *model) drawWaveform(window audio.PlaybackWindow, position, from, until 
 	return rows
 }
 
-// Logarithmic display makes quiet onsets/tails visible without changing the
-// source peaks, audio gain, or silence-suggestion threshold. Any nonzero signal
-// receives at least one eighth of a terminal cell; digital zero stays flat.
+// columnLevel averages a few peaks across the column. One loudest instant per
+// column makes sustained music a solid block; the average shows its shape, and
+// a lone click in silence still registers.
+func (m *model) columnLevel(start, end int64) float64 {
+	span := end - start
+	if span < waveSlices {
+		return m.clip.PeakBetween(start, end)
+	}
+	total := 0.0
+	for slice := range int64(waveSlices) {
+		total += m.clip.PeakBetween(start+slice*span/waveSlices, start+(slice+1)*span/waveSlices)
+	}
+
+	return total / waveSlices
+}
+
+// The scale starts at -48 dB so music has a shape instead of filling the pane;
+// a close-up still shows quiet tails. Any nonzero signal gets at least one
+// eighth of a cell and digital zero stays flat. Display only.
 func waveformDisplayUnits(peak float64, height int) int {
 	if peak <= 0 || math.IsNaN(peak) || height <= 0 {
 		return 0
@@ -154,4 +167,43 @@ func waveformCell(units, row, height int) string {
 	glyphs := [waveformCellSteps]rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 
 	return string(glyphs[filled-1])
+}
+
+// timeRuler labels round times under the waveform and the end at the right.
+func timeRuler(from, until int64, width int) string {
+	span := max(int64(1), until-from)
+	precise := span < rulerPreciseSpanMs
+	line := []byte(strings.Repeat(" ", max(0, width)))
+	last := clock(until, precise)
+	limit := width - len(last) - 1
+	free := 0
+	step := rulerStep(span, width)
+	for tick := (from + step - 1) / step * step; tick < until; tick += step {
+		label := clock(tick, precise)
+		column := int((tick - from) * int64(width) / span)
+		if column >= free && column+len(label) <= limit {
+			copy(line[column:], label)
+			free = column + len(label) + 1
+		}
+	}
+	if limit >= 0 {
+		copy(line[width-len(last):], last)
+	}
+
+	return string(line)
+}
+
+// rulerStep walks 0.1, 0.2, 0.5, 1, 2, 5… seconds until labels have room.
+func rulerStep(span int64, width int) int64 {
+	const firstStepMs, stepCycle, double, half = 100, 3, 2, 5
+	step := int64(firstStepMs)
+	for index := 0; step*int64(max(1, width))/span < rulerLabelSpacing; index++ {
+		if index%stepCycle == 1 {
+			step = step * half / double
+		} else {
+			step *= double
+		}
+	}
+
+	return step
 }

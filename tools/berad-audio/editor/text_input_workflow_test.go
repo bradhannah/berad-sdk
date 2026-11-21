@@ -48,12 +48,12 @@ func TestInlineTextEditsAtCaretWithoutChangingNumericValue(t *testing.T) {
 	m := fixture(t)
 	dispatchRune(m, 's')
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyCtrlU})
-	dispatchKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("100")})
+	dispatchKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0.100")})
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyLeft})
-	require.Equal(t, "100", m.input, "typing mode uses arrows for the caret, not numeric stepping")
+	require.Equal(t, "0.100", m.input, "typing mode uses arrows for the caret, not numeric stepping")
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyBackspace})
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
-	require.Equal(t, "120", m.input)
+	require.Equal(t, "0.120", m.input)
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.Equal(t, int64(120), m.window().StartMs)
 }
@@ -254,7 +254,7 @@ func TestTerminalBytesPasteAndApplyMultilineNote(t *testing.T) {
 
 func TestTerminalBytesMoveCaretAndApplyNumericField(t *testing.T) {
 	m := fixture(t)
-	runTerminalWorkflow(t, m, "s\x15100\x1b[D\x7f2\r\x11")
+	runTerminalWorkflow(t, m, "s\x150.100\x1b[D\x7f2\r\x11")
 	require.Empty(t, m.field)
 	require.Equal(t, int64(120), m.window().StartMs)
 }

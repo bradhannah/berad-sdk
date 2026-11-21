@@ -119,31 +119,32 @@ func (m *model) soundscapeSlotDescription(slot soundscapeSlot, layer *mixLayer, 
 	return description
 }
 
-func (m *model) soundscapeStatus(width int) string {
+// The strip takes a row only while a Soundscape is loaded.
+func (m *model) soundscapeRows() int {
 	if len(m.mix) == 0 {
-		if m.preview.Playing() {
-			return fit("PREVIEW ▶ "+m.previewLabel+" · a pins it · m opens Soundscape", width)
-		}
-
-		return fit(m.colors.dim.Render("SOUNDSCAPE · empty · a adds sound · m opens slots"), width)
+		return 0
 	}
-	const prefix = "SOUNDSCAPE "
+
+	return 1
+}
+
+func (m *model) soundscapeStatus(width int) string {
+	const prefix = " SOUNDSCAPE "
 	const separator = " | "
 	count := int(soundscapeSlotCount)
 	if m.preview.Playing() {
 		count++
 	}
 	cellWidth := max(1, (width-len(prefix)-(count-1)*len(separator))/count)
-	parts := make([]string, 0, soundscapeSlotCount)
+	parts := make([]string, 0, count)
 	for slot := ambientOne; slot < soundscapeSlotCount; slot++ {
 		layer := m.layerAt(slot)
 		icon, _ := m.layerState(layer)
-		name := strings.TrimPrefix(m.layerName(layer), "Nearby ")
-		parts = append(parts, fit(slot.shortLabel()+" "+icon+" "+name, cellWidth))
+		parts = append(parts, fit(slot.shortLabel()+" "+icon+" "+m.layerName(layer), cellWidth))
 	}
 	if m.preview.Playing() {
 		parts = append(parts, fit("P ▶ "+m.previewLabel, cellWidth))
 	}
 
-	return fit(prefix+strings.Join(parts, separator), width)
+	return fit(m.colors.dim.Render(prefix)+strings.Join(parts, separator), width)
 }

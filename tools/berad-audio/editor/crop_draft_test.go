@@ -33,7 +33,7 @@ func TestRegionDraftPublishesOnlyOnApplyAndOneUndoRestoresIt(t *testing.T) {
 	require.Equal(t, int64(200), m.window().StartMs)
 	require.Equal(t, before, m.doc.Recording(m.recordingID()))
 	require.Equal(t, revision, m.doc.Revision())
-	require.Contains(t, ansi.Strip(m.View()), "REGION DRAFT")
+	require.Contains(t, ansi.Strip(m.View()), "trim draft")
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyTab})
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyTab})
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
@@ -50,11 +50,11 @@ func TestCropFocusMatchesTheSingleVisibleActivePane(t *testing.T) {
 	m := fixture(t)
 	for _, key := range []rune{'p', '[', 'w', 's'} {
 		dispatchRune(m, key)
-		require.Equal(t, 1, strings.Count(ansi.Strip(m.View()), "ACTIVE ·"), "key %c", key)
+		require.Equal(t, 1, strings.Count(ansi.Strip(m.View()), "┏"), "key %c", key)
 	}
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	dispatchRune(m, 'v')
-	require.Equal(t, 1, strings.Count(ansi.Strip(m.View()), "ACTIVE ·"))
+	require.Equal(t, 1, strings.Count(ansi.Strip(m.View()), "┏"))
 }
 
 func TestRegionCancelAndNoOpApplyRetainRedo(t *testing.T) {
@@ -70,7 +70,7 @@ func TestRegionCancelAndNoOpApplyRetainRedo(t *testing.T) {
 	dispatchRune(m, '[')
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyRight})
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyLeft})
-	dispatchRune(m, 'a')
+	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.Equal(t, revision, m.doc.Revision(), "unchanged bounds are not a new history entry")
 	require.True(t, m.doc.Redo())
 	require.Equal(t, -2.0, *m.doc.Recording(m.recordingID()).CalibrationGainDB)
@@ -86,7 +86,7 @@ func TestDraftKeyFeedbackDoesNotReadTheSourceOrChangeHistory(t *testing.T) {
 	}
 	require.Equal(t, int64(300), m.window().StartMs, "draft keys operate on loaded bounds even before a freshness probe")
 	require.Equal(t, revision, m.doc.Revision())
-	dispatchRune(m, 'a')
+	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, m.crop)
 	require.True(t, m.sourceStale, "publication still requires source verification")
 	require.Equal(t, revision, m.doc.Revision())
@@ -98,11 +98,11 @@ func TestCropRejectsUnreviewedDocumentChangeUntilExplicitReload(t *testing.T) {
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyRight})
 	require.NoError(t, m.doc.SetRecordingLicense(m.recordingID(), "unknown"))
 	revision := m.doc.Revision()
-	dispatchRune(m, 'a')
+	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, m.crop)
 	require.Equal(t, revision, m.doc.Revision())
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyF5})
-	dispatchRune(m, 'a')
+	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.Nil(t, m.crop)
 	require.Equal(t, "unknown", m.doc.Recording(m.recordingID()).Provenance.License)
 	require.Equal(t, int64(10), m.doc.Recording(m.recordingID()).PlaybackWindow.StartMs)
@@ -131,16 +131,16 @@ func TestCrossedDraftBoundsStopPreviewAndRemainRecoverable(t *testing.T) {
 	dispatchRune(m, 'p')
 	voice := m.preview.(*fakeVoice)
 	dispatchRune(m, 's')
-	m.input = "600"
+	m.input = "0.6"
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.Empty(t, m.field, "crossed draft bounds are retained for correction")
 	require.Equal(t, int64(600), m.window().StartMs)
 	require.False(t, voice.Active(), "an invalid draft cannot keep auditioning old bounds as if current")
-	dispatchRune(m, 'a')
+	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, m.crop)
 	require.False(t, m.doc.Dirty())
 	dispatchRune(m, 'e')
-	m.input = "900"
+	m.input = "0.9"
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	advance(cropPreviewInterval)
 	require.True(t, voice.Playing())
@@ -151,7 +151,7 @@ func TestCrossedDraftBoundsStopPreviewAndRemainRecoverable(t *testing.T) {
 func TestFinishingEndInputKeepsEndAsTheArrowTarget(t *testing.T) {
 	m := fixture(t)
 	dispatchRune(m, 'e')
-	m.input = "700"
+	m.input = "0.7"
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyLeft})
 	require.Equal(t, int64(690), m.window().EndMs)
@@ -276,14 +276,14 @@ func TestChangedSourceRejectsApplyAndF5RebasesRetainedDraft(t *testing.T) {
 	require.NoError(t, err)
 	data[len(data)-1] ^= 1
 	require.NoError(t, os.WriteFile(m.clip.Path(), data, 0o644))
-	dispatchRune(m, 'a')
+	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, m.crop)
 	require.True(t, m.sourceStale)
 	require.False(t, m.doc.Dirty())
 	dispatchKey(m, tea.KeyMsg{Type: tea.KeyF5})
 	require.False(t, m.sourceStale)
 	require.Equal(t, int64(10), m.window().StartMs)
-	dispatchRune(m, 'a')
+	dispatchKey(m, tea.KeyMsg{Type: tea.KeyEnter})
 	require.Nil(t, m.crop)
 	require.Equal(t, int64(10), m.doc.Recording(m.recordingID()).PlaybackWindow.StartMs)
 }

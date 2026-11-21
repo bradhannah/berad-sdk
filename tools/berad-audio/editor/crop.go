@@ -3,7 +3,6 @@ package editorui
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,7 +12,7 @@ import (
 
 const cropPreviewInterval = 100 * time.Millisecond
 const cropBoundCount = 2
-const cropActionCount = 2
+const cropEdgeMs = 2000
 
 type cropLayerState struct {
 	layer           *mixLayer
@@ -121,7 +120,7 @@ func (m *model) beginCrop() bool {
 	m.report(m.preview.Close())
 	m.focus, m.marker = focusWave, markerStart
 	m.scheduleCropPreview()
-	m.status, m.statusIsError = "Region draft: Tab selects Apply/Cancel; p auditions; Escape discards.", false
+	m.status, m.statusIsError = "Nothing changes until you Apply. Enter applies; Esc discards.", false
 
 	return true
 }
@@ -137,7 +136,7 @@ func (m *model) setWindow(window *audio.PlaybackWindow) bool {
 	m.crop.window = copyWindow(window)
 	m.statusIsError, m.inputError = false, ""
 	m.scheduleCropPreview()
-	m.status = "Region draft updated; Apply/Create commits one edit, Escape discards."
+	m.status = "Nothing changes until you Apply. Enter applies; Esc discards."
 
 	return true
 }
@@ -285,9 +284,9 @@ func (m *model) applyCrop() tea.Cmd {
 		}
 	}
 	session.applying = true
-	m.status = "Verifying source content and applying region…"
+	m.status = "Checking the file and applying…"
 
-	return m.documentOperation(false, "Region applied; Ctrl+s saves authored changes.",
+	return m.documentOperation(false, "✓ Applied · u undoes · Ctrl+S saves",
 		func(document *audio.LibraryEditor) error {
 			if duplicate {
 				return document.DuplicateRecordingRegion(context.Background(), session.draft, newID, window, appendCue)
@@ -346,9 +345,9 @@ func (m *model) cancelCrop() {
 		}
 	}
 	if !m.statusIsError {
-		m.status = "Region draft discarded; authored settings are unchanged."
+		m.status = "Draft discarded. Nothing changed."
 		if m.sourceStale {
-			m.status = "Draft discarded. Source changed; F5 reloads the selected recording."
+			m.status = "Draft discarded. The file changed on disk; F5 reloads it."
 		}
 	}
 }
@@ -402,59 +401,88 @@ func (m *model) focusCropField(field int) {
 	}
 }
 
-//nolint:cyclop,funlen // One region workflow serves ordinary crops and metadata-only duplicate clips.
-func (m *model) cropKey(key string) tea.Cmd {
+// playCropEdge auditions only the two seconds at the selected marker: the
+// opening for Start, otherwise the ending. Later edits do not restart it.
+func (m *model) playCropEdge() bool {
+	if !m.resolveCropPreview(true) {
+		m.report(m.crop.err)
+
+		return false
+	}
+	session, edge, name := m.crop, m.window(), "ending"
+	if m.marker == markerStart {
+		edge.EndMs, name = min(edge.EndMs, edge.StartMs+cropEdgeMs), "opening"
+	} else {
+		edge.StartMs = max(edge.StartMs, edge.EndMs-cropEdgeMs)
+	}
+	if err := m.preview.Play(session.source, &edge, false, m.cropGain(session.preview)); err != nil {
+		m.report(err)
+
+		return false
+	}
+	session.audible, session.audition, session.paused = session.preview, false, false
+	m.previewRoute = &previewRoute{recordingID: session.recordingID, cueID: session.cueID, calibrated: true}
+	m.previewPaused, m.previewLoop = false, false
+	m.previewLabel = "Draft " + session.recordingID + " · " + name
+
+	return true
+}
+
+// cropFocusKey moves between the draft's rows and the waveform cursor.
+func (m *model) cropFocusKey(key string) bool {
 	count := m.cropFieldCount()
 	switch key {
-	case keyEscape:
-		m.cancelCrop()
-	case "q":
-		return m.quit()
 	case keyTab, keyDown:
-		m.focusCropField((m.crop.field + 1) % (count + cropActionCount))
+		m.focusCropField((m.crop.field + 1) % count)
 	case keyShiftTab, "up":
-		m.focusCropField((m.crop.field + count + 1) % (count + cropActionCount))
-	case keyEnter:
-		switch m.crop.field {
-		case count:
-			return m.applyCrop()
-		case count + 1:
-			m.cancelCrop()
-		case count - cropBoundCount:
-			m.beginInput(fieldStart, strconv.FormatInt(m.window().StartMs, 10))
-		case count - 1:
-			m.beginInput(fieldEnd, strconv.FormatInt(m.window().EndMs, 10))
-		default:
-			if m.duplicate != nil && m.crop.field == 0 {
-				m.beginInput(fieldClipID, m.duplicate.id)
-			} else {
-				m.playCrop()
-			}
-		}
-	case "a":
-		if m.duplicate != nil {
-			m.duplicate.appendToCue = !m.duplicate.appendToCue && m.duplicate.eligibleCue != ""
-		} else {
-			return m.applyCrop()
-		}
-	case "c":
-		if m.duplicate != nil {
-			return m.applyCrop()
-		}
+		m.focusCropField((max(0, m.crop.field) + count - 1) % count)
 	case "w":
 		m.focusCropField(-1)
 	case "[":
 		m.focusCropField(count - cropBoundCount)
 	case "]":
 		m.focusCropField(count - 1)
+	default:
+		return false
+	}
+
+	return true
+}
+
+//nolint:cyclop // One region workflow serves ordinary crops and metadata-only duplicate clips.
+func (m *model) cropKey(key string) tea.Cmd {
+	if m.cropFocusKey(key) {
+		return nil
+	}
+	switch key {
+	case keyEscape:
+		m.cancelCrop()
+	case "q":
+		return m.quit()
+	case keyEnter:
+		if m.duplicate != nil && m.crop.field == 0 {
+			m.beginInput(fieldClipID, m.duplicate.id)
+
+			return nil
+		}
+
+		return m.applyCrop()
+	case "a":
+		if m.duplicate != nil {
+			m.duplicate.appendToCue = !m.duplicate.appendToCue && m.duplicate.eligibleCue != ""
+		}
+	case "c":
+		if m.duplicate != nil {
+			return m.applyCrop()
+		}
 	case keyLeft, keyRight, keyShiftLeft, keyShiftRight:
-		if m.crop.field >= count {
-			m.focusCropField(count + (m.crop.field-count+1)%cropActionCount)
-		} else if m.marker != 0 || m.crop.field == -1 {
+		if m.marker != 0 || m.crop.field == -1 {
 			return m.browserKey(key)
 		}
 	case "p":
 		m.playCrop()
+	case "P":
+		m.playCropEdge()
 	case " ":
 		m.togglePreview()
 	case "s", "e", "i", "o", "z", "t", "r", "S", "l":
@@ -529,12 +557,13 @@ func (m *model) suggestTrim() {
 	if !m.beginCrop() {
 		return
 	}
-	window, ok := m.clip.SuggestedWindow()
+	// The draft's own source: a failed reload can leave no selected clip.
+	window, ok := m.crop.source.SuggestedWindow()
 	if !ok {
-		m.status = "No sound above −40 dB found; set draft bounds manually."
+		m.status = "It is all silence; set the start and end yourself."
 
 		return
 	}
 	m.setWindow(window)
-	m.status = "Suggested draft region (−40 dB, 10 ms padding); audition, then Apply or Cancel."
+	m.status = "Silence trimmed in the draft. p plays it; Enter applies; Esc discards."
 }

@@ -97,7 +97,7 @@ func (m *model) selectWorkspace(workspace editorWorkspace) tea.Cmd {
 	m.soundscapeVisible = false
 	m.focus, m.detailsScroll, m.marker = focusBrowser, 0, 0
 	m.restoreBrowseState(m.workspaceState[workspace])
-	m.status = "Workspace: " + workspaceName(workspace) + " · Tab/Shift+Tab or 1–4 switches"
+	m.status, m.statusIsError = "", false
 
 	return m.loadSelection()
 }

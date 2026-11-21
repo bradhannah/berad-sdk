@@ -1,24 +1,31 @@
 package editorui
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	audio "github.com/bradhannah/berad-sdk/modules/berad-audio/authoring"
 )
 
+// Cyan is reserved for keys and the pane that has them; green, amber and red
+// describe state; labels are dim and values plain.
 type palette struct {
 	title, focus, ready, warning, problem, dim, selected, key lipgloss.Style
-	detailLabel, detailValue                                  lipgloss.Style
+	hintKey, detailLabel, detailValue                         lipgloss.Style
 }
 
 const (
-	hintStopAll  = "Stop all"
-	hintCancel   = "Cancel"
-	hintPause    = "Pause"
-	hintGainKeys = "+/-"
+	hintStopAll   = "Stop all"
+	hintCancel    = "Cancel"
+	hintPause     = "Pause"
+	hintGainKeys  = "+ -"
+	hintSeparator = "   "
+	hintArrows    = "← →"
+	hintBoundKeys = "s e"
+	hintPlay      = "play"
+	hintAllKeys   = "all keys"
+	keyCancelName = "Esc"
+	keyEnterName  = "Enter"
 )
 
 func newPalette() palette {
@@ -30,24 +37,45 @@ func newPalette() palette {
 		dim:         lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
 		selected:    lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("4")).Bold(true),
 		key:         lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("6")).Bold(true),
-		detailLabel: lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true),
+		hintKey:     lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true),
+		detailLabel: lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
 		detailValue: lipgloss.NewStyle().Foreground(lipgloss.Color("7")),
 	}
 }
 
-func (m *model) badge(status audio.RecordingAvailability) string {
-	symbol, style := "…", m.colors.dim
-	switch status.State {
+// stateMark is the one-character sign and plain words for a recording's file.
+func stateMark(state audio.RecordingState) (string, string) {
+	switch state {
 	case audio.RecordingReady:
-		symbol, style = "●", m.colors.ready
+		return "●", "ready"
 	case audio.RecordingNoFile:
-		symbol, style = "○", m.colors.warning
-	case audio.RecordingMissing, audio.RecordingInvalid:
-		symbol, style = "!", m.colors.problem
+		return "·", "no audio yet"
+	case audio.RecordingMissing:
+		return "!", "file missing"
+	case audio.RecordingInvalid:
+		return "!", "cannot play"
 	case audio.RecordingChecking:
 	}
 
-	return style.Render(symbol + " " + string(status.State))
+	return "…", "checking"
+}
+
+func (m *model) stateStyle(state audio.RecordingState) lipgloss.Style {
+	switch state {
+	case audio.RecordingReady:
+		return m.colors.ready
+	case audio.RecordingMissing, audio.RecordingInvalid:
+		return m.colors.problem
+	case audio.RecordingNoFile, audio.RecordingChecking:
+	}
+
+	return m.colors.dim
+}
+
+func (m *model) badge(status audio.RecordingAvailability) string {
+	symbol, words := stateMark(status.State)
+
+	return m.stateStyle(status.State).Render(symbol + " " + words)
 }
 
 type keyHint struct{ key, action string }
@@ -60,18 +88,17 @@ func (m *model) hintRows(hints []keyHint) []string {
 	for _, hint := range hints {
 		item := hint.action
 		if hint.key != "" {
-			item = m.colors.key.Render("["+hint.key+"]") + " " + item
+			item = m.colors.hintKey.Render(hint.key) + " " + item
 		}
-		separator := ""
-		if line != "" {
-			separator = "  "
-		}
-		if line != "" && ansi.StringWidth(line+separator+item) > m.width {
+		if line != "" && ansi.StringWidth(line+hintSeparator+item) > m.width {
 			rows = append(rows, fit(line, m.width))
 			line = ""
-			separator = ""
 		}
-		line += separator + item
+		if line == "" {
+			line = " " + item
+		} else {
+			line += hintSeparator + item
+		}
 	}
 	if line != "" {
 		rows = append(rows, fit(line, m.width))
@@ -87,14 +114,14 @@ func (m *model) footerLines() []string {
 		return m.hintRows([]keyHint{{"", "Finishing file operation…"}, {"Ctrl+x", hintStopAll},
 			{"Ctrl+c", "Quit after publication"}})
 	case ownerQuit:
-		return m.hintRows([]keyHint{{"y", "Discard and quit"}, {"Esc", "Keep editing"}, {"Ctrl+x", hintStopAll}})
+		return m.hintRows([]keyHint{{"y", "Discard and quit"}, {keyCancelName, "Keep editing"}, {"Ctrl+x", hintStopAll}})
 	case ownerField:
 		return m.inputFooter()
 	case ownerInfo:
 		return m.hintRows([]keyHint{{"Up/Down", "Scroll"}, {"Enter/Esc", "Close"}, {"Ctrl+x", hintStopAll}})
 	case ownerAmbientReplacement:
 		return m.hintRows([]keyHint{{"1/2 or ↑↓", "Ambient slot"}, {"Enter", "Replace"},
-			{"Esc", "Cancel"}, {"x", hintStopAll}})
+			{keyCancelName, hintCancel}, {"x", hintStopAll}})
 	case ownerVolumes:
 		return m.hintRows([]keyHint{{"↑↓", "Control"}, {"←→ or +/-", "Change"},
 			{"r", "Game Mix/Reference"}, {"Enter/Esc", "Close"}, {"x", hintStopAll}})
@@ -105,7 +132,7 @@ func (m *model) footerLines() []string {
 	case ownerRoutingPicker:
 		if m.routing.menu.editingSearch {
 			return m.hintRows([]keyHint{{"Left/Right", "Caret"}, {"Enter", "Apply search"},
-				{"Esc", "Cancel search"}, {"Ctrl+u", "Clear"}, {"Ctrl+x", hintStopAll}})
+				{keyCancelName, "Cancel search"}, {"Ctrl+u", "Clear"}, {"Ctrl+x", hintStopAll}})
 		}
 
 		return m.routingFooter()
@@ -140,12 +167,15 @@ func (m *model) formKeyHints() []keyHint {
 
 func (m *model) inputFooter() []string {
 	if m.field == fieldSearch {
-		return m.hintRows([]keyHint{{"", "EDIT FILTER · keywords or category:/family:/context:"},
-			{"Left/Right", "Caret"}, {"Enter", "Apply filter"}, {"Esc", hintCancel}, {"Ctrl+u", "Clear"}})
+		return m.hintRows([]keyHint{{"", "Type to narrow the list"},
+			{keyEnterName, "keep"}, {keyCancelName, "clear"}, {"Ctrl+u", "empty"}})
+	}
+	if m.inlineInput() {
+		return m.hintRows([]keyHint{{"", m.inputGuidance()}, {keyEnterName, "apply"}, {keyCancelName, "cancel"}})
 	}
 
 	return m.hintRows([]keyHint{{"", m.inputGuidance()},
-		{"Tab", "Apply/Cancel"}, {"Left/Right", "Caret/action"}, {"Esc", hintCancel},
+		{"Tab", "Apply/Cancel"}, {"Left/Right", "Caret/action"}, {keyCancelName, hintCancel},
 		{"Ctrl+u", "Clear"}, {"Ctrl+x", hintStopAll}})
 }
 
@@ -153,86 +183,63 @@ func (m *model) inputFooter() []string {
 func (m *model) selectionFooter() []string {
 	if m.picker != nil {
 		return m.hintRows([]keyHint{{"↑↓", "Choose"}, {"Enter", "Open/import"}, {"p", "Preview"},
-			{"Ctrl+p/n", "Prev/next page"}, {"/", "Path"}, {"Backspace", "Parent"}, {"Esc", hintCancel}, {"x", "Stop"}})
+			{"Ctrl+p/n", "Prev/next page"}, {"/", "Path"}, {"Backspace", "Parent"}, {keyCancelName, hintCancel}, {"x", "Stop"}})
 	}
 	if m.assigning {
-		return m.hintRows([]keyHint{{"↑↓", "Choose"}, {"Enter/y", "Assign"}, {"Space", "Preview/pause"}, {"Esc", hintCancel},
-			{"/", "Search"}, {"Ctrl+f", "Filter"}, {"x", hintStopAll}})
+		return m.hintRows([]keyHint{{"↑↓", "Choose"}, {"Enter/y", "Assign"}, {"Space", "Preview/pause"},
+			{keyCancelName, hintCancel}, {"/", "Search"}, {"Ctrl+f", "Filter"}, {"x", hintStopAll}})
 	}
 	if m.variantCue != "" && m.focus == focusBrowser {
 		return m.hintRows([]keyHint{{"↑↓", "Clip"}, {"Enter", "Preview"}, {"a", "Append"}, {"Delete", "Remove"},
 			{"Ctrl+↑↓", "Reorder"}, {"Ctrl+p/n", "Prev/next page"}, {"Shift+d", "Duplicate"},
-			{"Ctrl+s", "Save"}, {"Esc", "Back"}})
+			{"Ctrl+s", "Save"}, {keyCancelName, "Back"}})
 	}
 
 	return m.browseFooter()
 }
 
-//nolint:goconst // Each focus surface publishes a complete readable shortcut table.
+// The everyday keys for whatever has them; ? lists the rest.
 func (m *model) browseFooter() []string {
-	const primaryHintCapacity = 9
-	rows := make([]keyHint, 0, primaryHintCapacity)
-	rows = append(rows, keyHint{"Tab/1–4", "Workspace"}, keyHint{"/", "Search"},
-		keyHint{"f", "Choose sound/file"}, keyHint{"?", "All shortcuts"})
-	if m.focus == focusWave {
-		rows = []keyHint{{"i/o", "Mark trim"}, {"s/e", "Exact trim"}, {"←→", "Seek/nudge"}, {"Esc", "Browse"}, {"?", "Help"}}
+	switch m.focus {
+	case focusWave:
+		return m.hintRows([]keyHint{{hintArrows, "seek"}, {"i o", "mark trim"}, {hintBoundKeys, "type times"},
+			{keyCancelName, "list"}, {"?", hintAllKeys}})
+	case focusDetails:
+		return m.hintRows([]keyHint{{"↑↓", "scroll"}, {"I", "all numbers"}, {keyCancelName, "list"}, {"?", hintAllKeys}})
+	case focusMix:
+		return m.hintRows([]keyHint{{"↑↓", "Layer"}, {keyEnterName, "Restart"}, {"Space", hintPause}, {"u", "Mute"},
+			{keyCancelName, "Browse"}, {"v", "Preview volumes"}, {"x", hintStopAll}, {"Ctrl+s", "Save"}, {"q", "Quit"}})
+	case focusBrowser:
 	}
-	if m.focus == focusDetails {
-		rows = []keyHint{{"↑↓", "Scroll"}, {"f", "Choose sound/file"}, {"Ctrl+L", "License"},
-			{"Esc", "Browse"}, {"?", "Help"}}
-	}
-	global := []keyHint{{"Ctrl+s", "Save"}, {"u", "Undo"}, {"q", "Quit"}}
-	if m.focus == focusMix {
-		rows = []keyHint{{"↑↓", "Layer"}, {"Enter", "Restart"}, {"Space", "Pause"}, {"u", "Mute"}, {"Esc", "Browse"}}
-		global = []keyHint{{"v", "Preview volumes"}, {"x", hintStopAll}, {"Ctrl+s", "Save"}, {"q", "Quit"}}
+	level, file := "level", "file"
+	if m.browsingCues() {
+		level, file = "volume", "sound"
 	}
 
-	return m.hintRows(append(rows, global...))
+	return m.hintRows([]keyHint{{keyEnterName, hintPlay}, {"Space", "pause"}, {"x", "stop"}, {hintGainKeys, level},
+		{"i o", "trim"}, {"f", file}, {"/", "find"}, {"?", hintAllKeys}, {"Ctrl+S", "save"}, {"q", "quit"}})
 }
 
 func (m *model) fieldLabel() string {
-	if m.field == fieldStart {
-		return "Start time (ms)"
-	}
-	if m.field == fieldEnd {
-		return "End time (ms)"
-	}
-	if m.field == fieldGain && !m.browsingCues() {
-		return "Recording calibration (saved dB)"
-	}
-	if m.field == fieldGain {
-		return "Moment gain (saved amplitude)"
+	switch m.field {
+	case fieldStart:
+		return "Start"
+	case fieldEnd:
+		return "End"
+	case fieldGain:
+		if m.browsingCues() {
+			return "Volume"
+		}
+
+		return "Level"
+	case fieldCalibrationTarget:
+		return "Auto target"
 	}
 
 	return m.field
 }
 
-func (m *model) trimExamples() (int64, int64) {
-	const exampleStartMs = 420
-	const exampleEndMs = 2350
-	const startFraction = 4
-	end := int64(exampleEndMs)
-	if m.clip != nil {
-		end = min(end, m.clip.DurationMs())
-		if m.window().StartMs >= end {
-			end = m.clip.DurationMs()
-		}
-	}
-	startLimit := end
-	if m.clip != nil {
-		startLimit = min(startLimit, m.window().EndMs)
-	}
-	start := min(int64(exampleStartMs), max(0, startLimit)/startFraction)
-
-	return start, end
-}
-
-func timeExample(label string, milliseconds int64) string {
-	return fmt.Sprintf("%s ms e.g. %d=%.3fs", label, milliseconds, float64(milliseconds)/msPerSecond)
-}
-
 func (m *model) inputGuidance() string {
-	start, end := m.trimExamples()
 	switch m.field {
 	case fieldNote:
 		return "Note: Enter inserts a line; Tab selects Apply/Cancel; Escape discards."
@@ -242,10 +249,16 @@ func (m *model) inputGuidance() string {
 		return "Comma-separated keywords or phrases · replaces this item's custom terms"
 	case fieldTrigger:
 		return "One sentence describing this moment's usual gameplay trigger"
-	case fieldStart:
-		return timeExample("Start", start) + "; sets the draft only."
-	case fieldEnd:
-		return timeExample("End", end) + "; sets the draft only."
+	case fieldStart, fieldEnd:
+		return "m:ss.mmm or seconds"
+	case fieldGain:
+		if m.browsingCues() {
+			return "0 to 100"
+		}
+
+		return "-48 to +12 · turns auto off"
+	case fieldCalibrationTarget:
+		return "-60 to -6"
 	default:
 		return "Text input · Enter applies"
 	}

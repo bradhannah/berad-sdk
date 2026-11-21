@@ -162,6 +162,22 @@ type model struct {
 	autoGainDraft       *calibrationDraft
 	calibrationCache    *calibrationCache
 	routing             routingEditor
+	detailsFull         bool
+	searchBefore        string
+	gainRun             gainRun
+	cueOrder            cueOrder
+}
+
+type cueOrder struct {
+	doc      *audio.LibraryEditor
+	revision uint64
+	ids      []string
+}
+
+// gainRun remembers the last +/- step so a run of them is one Undo entry.
+type gainRun struct {
+	identity string
+	revision uint64
 }
 
 func newModel(doc *audio.LibraryEditor, selected ...Options) *model {
@@ -186,7 +202,6 @@ func newModel(doc *audio.LibraryEditor, selected ...Options) *model {
 	editor.routing.tiles = editor.targets.Tiles
 	editor.routing.selected = make(map[string]bool)
 	editor.prepareAvailability()
-	editor.status = "Enter: play selection. f: choose file. Ctrl+s: save the real manifest."
 	editor.refreshKeys()
 
 	return editor
@@ -205,6 +220,8 @@ func Run(doc *audio.LibraryEditor, options Options) error {
 		return err
 	}
 	m := newModel(doc, options)
+	m.workspace = workspaceMoments // Open on what the game plays; Recordings is the file bin.
+	m.refreshKeys()
 	defer m.close()
 	_, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	if err != nil {

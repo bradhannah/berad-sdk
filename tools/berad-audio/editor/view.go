@@ -1,6 +1,8 @@
 package editorui
 
 import (
+	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
@@ -12,14 +14,14 @@ import (
 const (
 	minimumWidth       = 60
 	minimumHeight      = 24
-	headerRows         = 4
+	headerRows         = 1
 	statusRows         = 1
 	panelEdges         = 2
-	browserLabels      = 3
-	browserHeadingRows = 2
-	minimumWaveHeight  = 7
-	maximumWaveHeight  = 24
-	waveHeightDivisor  = 3
+	edgeLabelPadding   = 3
+	minimumWaveHeight  = 6
+	maximumWaveHeight  = 12
+	smallestWaveHeight = 4
+	waveHeightDivisor  = 5
 	paneGap            = 1
 	leftPanePercent    = 55
 	percentScale       = 100
@@ -34,44 +36,38 @@ const (
 	focusMix
 )
 
-type editorLayout struct{ width, left, right, top, wave, mix int }
+type editorLayout struct{ width, left, right, top, wave int }
 
+// The list owns whatever height the fixed rows and a modest waveform leave.
 func (m *model) layout() editorLayout {
 	width, height := max(minimumWidth, m.width), max(minimumHeight, m.height)
-	footerRows := len(m.footerLines())
+	fixed := headerRows + statusRows + len(m.footerLines()) + transportRows + m.soundscapeRows()
 	wave := max(minimumWaveHeight, min(maximumWaveHeight, height/waveHeightDivisor))
-	mix := 1
 	minimumBrowserHeight := panelEdges + m.browserLabelRows() + 1
-	if m.field != "" && m.inlineInput() && m.field != fieldSearch {
-		minimumBrowserHeight = max(minimumBrowserHeight, len(m.inputLines(width/columnSplit))+panelEdges)
-	}
-	available := height - headerRows - statusRows - footerRows - minimumBrowserHeight - transportRows
-	if mix > 1 && available-mix < minimumWaveHeight {
-		mix = 1
-	}
-	wave = max(panelEdges+1, min(wave, available-mix))
+	wave = max(smallestWaveHeight, min(wave, height-fixed-minimumBrowserHeight))
 	if m.routingWorkspace() {
 		wave = 0 // Assignment workspaces give space to settings; trimming stays in Recordings/Moments.
 	}
-	top := height - headerRows - statusRows - footerRows - wave - mix - transportRows
 	left := width * leftPanePercent / percentScale
 
-	return editorLayout{width: width, left: left, right: width - left - paneGap, top: top, wave: wave, mix: mix}
+	return editorLayout{width: width, left: left, right: width - left - paneGap, top: height - fixed - wave, wave: wave}
 }
 
 func (m *model) listHeight() int { return max(1, m.layout().top-panelEdges-m.browserLabelRows()) }
 
+func (m *model) searchRowVisible() bool { return m.field == fieldSearch || m.search != "" }
+
+// Column titles, plus the filter row while one is set and the routing legend.
 func (m *model) browserLabelRows() int {
-	const compactFooterWidth = 80
-	extra := 0
-	if m.field == fieldSearch {
-		extra = 2
+	rows := 1
+	if m.searchRowVisible() {
+		rows++
 	}
-	if m.height <= minimumHeight && m.width < compactFooterWidth {
-		return browserHeadingRows + extra
+	if m.routingWorkspace() && m.routing.menu == nil {
+		rows++
 	}
 
-	return browserLabels + extra
+	return rows
 }
 
 func (m *model) View() string {
@@ -84,13 +80,12 @@ func (m *model) View() string {
 
 		return message + "\n" + safe(m.status)
 	}
-	const dialogWidth = 84
-	width := min(dialogWidth, m.width-editorDialogMargin)
+	width := min(maxDialogWidth, m.width-editorDialogMargin)
 	background := m.workspaceView()
 	if dialog, visible := m.dialogContent(width - panelEdges); visible {
-		if m.statusIsError && m.field == "" && m.form == nil {
+		if m.statusIsError && m.field == "" && m.form == nil && dialog.focus >= 0 {
 			dialog.rows = append(dialog.rows, m.colors.problem.Render("! "+safe(m.status)))
-			dialog.focus = len(dialog.rows) - 1
+			dialog.focus = len(dialog.rows) - 1 // Scrolling dialogs keep their own position.
 		}
 
 		return m.overlayDialog(background, dialog, width)
@@ -101,66 +96,99 @@ func (m *model) View() string {
 
 func (m *model) workspaceView() string {
 	layout := m.layout()
-	state := m.colors.ready.Render("SAVED")
-	dirty := m.doc.Dirty()
-	if dirty {
-		state = m.colors.warning.Render("* UNSAVED")
-	}
-	if m.doc.NeedsSync() {
-		state = m.colors.warning.Render("* DURABILITY PENDING")
-		if dirty {
-			state += " · UNSAVED"
-		}
-	}
-	if m.crop != nil {
-		state += " · REGION DRAFT"
-	}
-	title := "AUDIO LIBRARY EDITOR  /  " + strings.ToUpper(workspaceName(m.workspace)) + "  " + state
-	tabs := m.workspaceTitle()
-	left := m.panel(m.browserTitle(), m.browserLines(layout.left-panelEdges), layout.left, layout.top,
-		m.panelFocused(focusBrowser))
+	left := m.panelWithFoot(m.browserTitle(), m.browserLines(layout.left-panelEdges), layout.left, layout.top,
+		m.panelFocused(focusBrowser), m.browserFoot())
 	panes := lipgloss.JoinHorizontal(lipgloss.Top, left, strings.Repeat(" ", paneGap), m.rightPane(layout))
-	status := safe(m.status)
-	if m.statusIsError {
-		status = m.colors.problem.Render("! " + status)
-	}
-	sections := []string{fit(m.colors.title.Render(title), layout.width), fit(tabs, layout.width),
-		m.previewVolumeStrip(layout.width), m.filterStrip(layout.width), panes}
+	sections := []string{m.headerLine(layout.width), panes}
 	if layout.wave > 0 {
 		sections = append(sections, m.waveform(layout.width, layout.wave))
 	}
-	sections = append(sections, m.soundscapeStatus(layout.width), m.transportView(layout.width),
-		fit(status, layout.width), strings.Join(m.footerLines(), "\n"))
+	if m.soundscapeRows() > 0 {
+		sections = append(sections, m.soundscapeStatus(layout.width))
+	}
+	sections = append(sections, m.transportView(layout.width), m.statusLine(layout.width),
+		strings.Join(m.footerLines(), "\n"))
 
 	return strings.Join(sections, "\n")
 }
 
-func (m *model) rightPane(layout editorLayout) string {
-	rightTitle := "DETAILS · d focus / Esc browse"
-	if m.soundscapeVisible {
-		rightTitle = "SOUNDSCAPE · temporary · m focus"
-	}
-	if m.volumeControls {
-		rightTitle = "PREVIEW VOLUME · temporary"
-	}
-	var rightLines []string
-	if m.crop != nil && !m.volumeControls {
-		rightTitle = "REGION DRAFT · Apply/Cancel"
-		if m.duplicate != nil {
-			rightTitle = "DUPLICATE CLIP · Create/Cancel"
+// One row: where you are, which file, and whether it is saved.
+func (m *model) headerLine(width int) string {
+	tabs := " " + m.workspaceTitle()
+	title := m.colors.title.Render(" AUDIO EDITOR") + "  " + tabs
+	// Narrow terminals give up the program name, then the file name, never the state.
+	for _, choice := range [][2]string{{title, m.saveState(true)}, {tabs, m.saveState(true)}, {tabs, m.saveState(false)}} {
+		if gap := width - ansi.StringWidth(choice[0]) - ansi.StringWidth(choice[1]) - 1; gap > 0 {
+			return choice[0] + strings.Repeat(" ", gap) + choice[1] + " "
 		}
-		rightLines = m.visibleCropLines(layout.right-panelEdges, layout.top-panelEdges)
-	} else {
-		rightLines = m.visibleDetails(layout.right - panelEdges)
-	}
-	inline := m.field != "" && m.field != fieldSearch && m.inlineInput()
-	if inline {
-		rightTitle = "EDITING · " + m.fieldLabel()
-		rightLines = m.inputLines(layout.right - panelEdges)
 	}
 
-	return m.panel(rightTitle, rightLines, layout.right, layout.top,
+	return fit(tabs, width)
+}
+
+func (m *model) saveState(withFile bool) string {
+	state := m.colors.ready.Render("● saved")
+	if m.doc.Dirty() {
+		state = m.colors.warning.Render("* unsaved")
+	}
+	if m.doc.NeedsSync() {
+		state += m.colors.warning.Render(" · save not confirmed")
+	}
+	if m.duplicate != nil {
+		state += m.colors.warning.Render(" · duplicate draft")
+	} else if m.crop != nil {
+		state += m.colors.warning.Render(" · trim draft")
+	}
+
+	if !withFile {
+		return state
+	}
+	file := filepath.Base(m.doc.Path())
+	if m.scanDone < m.scanTotal {
+		file = fmt.Sprintf("checking %d of %d · %s", m.scanDone, m.scanTotal, file)
+	}
+
+	return m.colors.dim.Render(file) + " " + state
+}
+
+func (m *model) statusLine(width int) string {
+	if m.statusIsError {
+		return m.colors.problem.Render(fit(" ! "+safe(m.status), width))
+	}
+
+	return fit(" "+safe(m.status), width)
+}
+
+func (m *model) rightPane(layout editorLayout) string {
+	lines := m.visibleDetails(layout.right - panelEdges)
+	if m.crop != nil && !m.volumeControls {
+		lines = m.visibleCropLines(layout.right-panelEdges, layout.top-panelEdges)
+	}
+
+	return m.panel(m.rightTitle(), lines, layout.right, layout.top,
 		m.panelFocused(focusDetails) || m.panelFocused(focusMix))
+}
+
+func (m *model) rightTitle() string {
+	draft := m.colors.warning.Render("  draft")
+	switch {
+	case m.volumeControls:
+		return m.colors.title.Render("PREVIEW VOLUME") + m.colors.dim.Render("  temporary")
+	case m.duplicate != nil:
+		return m.colors.title.Render("DUPLICATE") + "  " + safe(m.crop.recordingID) + draft
+	case m.crop != nil:
+		return m.colors.title.Render("TRIM") + "  " + safe(m.crop.recordingID) + draft
+	case m.soundscapeVisible:
+		return m.colors.title.Render("SOUNDSCAPE") + m.colors.dim.Render("  temporary")
+	case m.routingWorkspace() || m.routing.menu != nil || m.selectedID() == "":
+		return m.colors.title.Render("DETAILS")
+	}
+	name := m.selectedID()
+	if m.browsingCues() {
+		name = m.doc.Cue(name).Name
+	}
+
+	return m.colors.title.Render(safe(name)) + "  " + m.badge(m.itemStatus(m.selectedID()))
 }
 
 func (m *model) workspaceTitle() string {
@@ -168,9 +196,9 @@ func (m *model) workspaceTitle() string {
 	for workspace := workspaceRecordings; workspace < workspaceCount; workspace++ {
 		label := strconv.Itoa(int(workspace)+1) + " " + workspaceName(workspace)
 		if workspace == m.workspace {
-			tabs = append(tabs, m.colors.key.Render("▶ "+strings.ToUpper(label)+" ◀"))
+			tabs = append(tabs, m.colors.selected.Render("["+label+"]"))
 		} else {
-			tabs = append(tabs, m.colors.dim.Render("["+label+"]"))
+			tabs = append(tabs, m.colors.dim.Render(" "+label+" "))
 		}
 	}
 
@@ -178,50 +206,96 @@ func (m *model) workspaceTitle() string {
 }
 
 func (m *model) browserTitle() string {
-	if m.routing.menu != nil {
-		return m.routing.menu.title
-	}
-	if m.workspace == workspaceTiles {
-		return "TILES · animation families / audio"
-	}
-	if m.workspace == workspaceLocations {
-		return "LOCATIONS · music / dungeon ambience"
-	}
-	if m.duplicate != nil {
-		return "DUPLICATE NEXT · Enter edits the selected field"
-	}
-	if m.picker != nil {
-		return "FILES · Enter open/import"
-	}
-	if m.variantCue != "" && !m.assigning {
-		return "ORDERED CLIPS · " + m.variantCue
-	}
-	if m.browsingCues() {
-		return "MOMENTS · target family / assignment"
+	name := strings.ToUpper(workspaceName(m.workspace))
+	switch {
+	case m.routing.menu != nil:
+		return m.colors.dim.Render(safe(m.routing.menu.title))
+	case m.routingWorkspace():
+		return m.colors.title.Render(name) + "  " + m.colors.dim.Render(m.routingFilterTitle())
+	case m.picker != nil:
+		return m.colors.title.Render("FILES")
+	case m.variantCue != "" && !m.assigning:
+		return m.colors.title.Render("CLIPS IN TURN") + "  " + safe(m.doc.Cue(m.variantCue).Name)
+	case m.assigning:
+		name = strings.ToUpper(workspaceName(workspaceRecordings))
 	}
 
-	return "RECORDINGS · family / calibration / uses"
+	return m.colors.title.Render(name) + "  " + m.filterChips()
+}
+
+// The chips double as the Ctrl+F filter: the lit one is what the list shows.
+func (m *model) filterChips() string {
+	labels := [filterCount]string{filterLabelAll, "With audio", "Empty", "Problems"}
+	counts := [filterCount]int{}
+	for _, id := range m.workspaceIDs() {
+		status := m.itemStatus(id)
+		for filter := filterAll; filter < filterCount; filter++ {
+			if matchesFilter(status, filter) {
+				counts[filter]++
+			}
+		}
+	}
+	parts := make([]string, 0, filterCount)
+	for filter := filterAll; filter < filterCount; filter++ {
+		text := fmt.Sprintf("%s %d", labels[filter], counts[filter])
+		if filter == m.filter {
+			text = m.colors.selected.Render(" " + text + " ")
+		} else {
+			text = m.colors.dim.Render(text)
+		}
+		parts = append(parts, text)
+	}
+
+	return strings.Join(parts, "  ")
+}
+
+func (m *model) browserFoot() string {
+	if m.picker != nil || m.routing.menu != nil || len(m.keys) == 0 {
+		return ""
+	}
+	foot := fmt.Sprintf("%d of %d", m.cursor+1, len(m.keys))
+	if m.browsingCues() {
+		foot += " · A–Z"
+	}
+
+	return m.colors.dim.Render(foot)
 }
 
 func (m *model) panel(title string, lines []string, width, height int, active bool) string {
-	style := m.colors.dim
+	return m.panelWithFoot(title, lines, width, height, active, "")
+}
+
+// The pane with the keys gets a heavy cyan frame, so focus reads without colour.
+func (m *model) panelWithFoot(title string, lines []string, width, height int, active bool, foot string) string {
+	style, side := m.colors.dim, "│"
+	corners := [...]string{"┌", "─", "┐", "└", "┘"}
 	if active {
-		style = m.colors.focus
-		title = "ACTIVE · " + title
+		style, side = m.colors.focus, "┃"
+		corners = [...]string{"┏", "━", "┓", "┗", "┛"}
 	}
 	inside := max(1, width-panelEdges)
 	rows := make([]string, 0, height)
-	rows = append(rows, style.Render("┌"+plainFit(" "+title+" ", inside, "─")+"┐"))
+	rows = append(rows, panelEdge(style, corners[0], corners[1], corners[2], title, inside))
 	for row := range height - panelEdges {
 		line := ""
 		if row < len(lines) {
 			line = lines[row]
 		}
-		rows = append(rows, style.Render("│")+fit(line, inside)+style.Render("│"))
+		rows = append(rows, style.Render(side)+fit(line, inside)+style.Render(side))
 	}
-	rows = append(rows, style.Render("└"+strings.Repeat("─", inside)+"┘"))
+	rows = append(rows, panelEdge(style, corners[3], corners[1], corners[4], foot, inside))
 
 	return strings.Join(rows, "\n")
+}
+
+func panelEdge(style lipgloss.Style, left, fill, right, label string, inside int) string {
+	if label == "" || inside <= edgeLabelPadding {
+		return style.Render(left + strings.Repeat(fill, inside) + right)
+	}
+	label = ansi.Truncate(label, inside-edgeLabelPadding, "…")
+	rest := inside - ansi.StringWidth(label) - edgeLabelPadding
+
+	return style.Render(left+fill+" ") + label + style.Render(" "+strings.Repeat(fill, rest)+right)
 }
 
 func plainFit(text string, width int, pad string) string {

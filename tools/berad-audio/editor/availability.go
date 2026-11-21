@@ -270,10 +270,27 @@ func (m *model) workspaceIDs() []string {
 		return m.doc.Cue(m.variantCue).Recordings()
 	}
 	if m.browsingCues() {
-		return m.doc.CueIDs()
+		return m.cuesByName()
 	}
 
 	return m.doc.RecordingIDs()
+}
+
+// cuesByName lists moments by the name on screen, not by their hidden identity.
+// The order is kept until the document changes.
+func (m *model) cuesByName() []string {
+	if m.cueOrder.doc == m.doc && m.cueOrder.revision == m.doc.Revision() {
+		return m.cueOrder.ids
+	}
+	ids := m.doc.CueIDs()
+	names := make(map[string]string, len(ids))
+	for _, id := range ids {
+		names[id] = strings.ToLower(m.doc.Cue(id).Name)
+	}
+	slices.SortStableFunc(ids, func(left, right string) int { return strings.Compare(names[left], names[right]) })
+	m.cueOrder = cueOrder{doc: m.doc, revision: m.doc.Revision(), ids: ids}
+
+	return ids
 }
 
 func (m *model) refreshKeys() {
@@ -320,10 +337,10 @@ func (m *model) matchesFacet(identity, key, value string) bool {
 	if !m.browsingCues() {
 		usages = m.doc.Usages(identity)
 	}
-	if key == "category" && value == "unassigned" && len(usages) == 0 {
+	if key == facetCategory && value == "unassigned" && len(usages) == 0 {
 		return true
 	}
-	if key == "family" && !m.browsingCues() && m.doc.RecordingFamily(identity) == value {
+	if key == facetFamily && !m.browsingCues() && m.doc.RecordingFamily(identity) == value {
 		return true
 	}
 	for _, cueID := range usages {
@@ -347,9 +364,9 @@ func (m *model) matchesCueFacet(cueID, key, value string) bool {
 		// Preserve the default SFX facet for non-music/non-ambient values.
 	}
 	switch key {
-	case "category":
+	case facetCategory:
 		return category == value
-	case "family":
+	case facetFamily:
 		return classification.TargetAcousticFamily == value
 	case "phase":
 		return classification.Phase == value

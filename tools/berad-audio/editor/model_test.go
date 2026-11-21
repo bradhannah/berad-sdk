@@ -148,8 +148,8 @@ func TestLiveEditingWaveformSaveAndUndo(t *testing.T) {
 	model.browserKey("right")
 	require.Equal(t, int64(50), model.window().StartMs)
 	finish(model, model.applyCrop())
-	require.Contains(t, model.View(), "UNSAVED")
-	require.Contains(t, model.View(), "Start 50")
+	require.Contains(t, ansi.Strip(model.View()), "* unsaved")
+	require.Contains(t, ansi.Strip(model.View()), "0:00.050 to 0:00.260")
 	starts := voice.starts
 	finish(model, model.save())
 	require.False(t, model.doc.Dirty())

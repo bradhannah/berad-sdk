@@ -45,14 +45,15 @@ func (m *model) loadSelection() tea.Cmd {
 	path, err := m.doc.RecordingPath(m.recordingID())
 	if err != nil {
 		m.invalidateSource(true)
-		m.report(err)
-		if m.doc.FileAvailability(m.recordingID()).State == audio.RecordingNoFile {
-			m.statusIsError = false
-		}
-		if m.selectedID() == "" {
-			m.status = "No matches. / changes search; Ctrl+f changes the filter."
-		} else if m.routingWorkspace() && m.routingCue() == "" {
-			m.status = "No sound selected. f assigns; Enter previews."
+		switch {
+		case m.selectedID() == "":
+			m.status = "Nothing matches. / changes the filter; Ctrl+f shows more."
+		case m.routingWorkspace() && m.routingCue() == "":
+			m.status = "No sound here. f chooses one."
+		case m.doc.FileAvailability(m.recordingID()).State == audio.RecordingNoFile:
+			m.status = "No audio yet. f chooses one."
+		default:
+			m.report(err)
 		}
 
 		return nil
