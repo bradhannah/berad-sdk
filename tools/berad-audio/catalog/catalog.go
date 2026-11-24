@@ -165,8 +165,8 @@ func Build(manifest []byte, files fs.FS, options Options) (*Catalog, error) {
 	}
 	for _, id := range sortedKeys(library.Cues) {
 		cue := library.Cues[id]
-		moment := newCatalogMoment(id, cue.Name, options.CueCategories[id])
-		catalog.assignCue(&moment, id, library, options)
+		moment := NewMoment(id, cue.Name, options.CueCategories[id])
+		catalog.AssignCue(&moment, id, library, options)
 		catalog.Moments = append(catalog.Moments, moment)
 	}
 	catalog.linkAssets()
@@ -179,7 +179,9 @@ func Build(manifest []byte, files fs.FS, options Options) (*Catalog, error) {
 	return catalog, nil
 }
 
-func newCatalogMoment(id, name, category string) CatalogMoment {
+// NewMoment returns an unassigned moment with empty lists and unreviewed status,
+// ready for AssignCue or for a game's own enrichment.
+func NewMoment(id, name, category string) CatalogMoment {
 	var moment CatalogMoment
 	moment.ID, moment.Name, moment.Category = id, name, category
 	moment.Availability = "missing_definition"
@@ -195,7 +197,10 @@ func newCatalogMoment(id, name, category string) CatalogMoment {
 	return moment
 }
 
-func (catalog *Catalog) assignCue(
+// AssignCue fills a moment from one library cue: its classification, recordings,
+// file and playback window. A cue with no category in options is a sound effect,
+// or ambient when the library routes it as ambience.
+func (catalog *Catalog) AssignCue(
 	moment *CatalogMoment, cueID string, library authoring.LibraryDocument, options Options,
 ) {
 	entry := library.Cues[cueID]
