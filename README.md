@@ -9,8 +9,8 @@ assets retain their own terms; see [licensing](docs/LICENSING.md).
 
 ## Current availability
 
-Every module is experimental (v0). Berad Path serves berad-engine; the others
-are used by Ultima V Redux. There are no stable
+Every module is experimental (v0). All are used by Ultima V Redux; Berad Path
+also serves berad-engine. There are no stable
 releases: APIs can change between revisions, so pin a reviewed revision.
 
 | Module | Provides | Checks |

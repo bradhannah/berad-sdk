@@ -5,7 +5,7 @@ Cheapest-route search on a grid with A*. Package `pathfind` has one function,
 cells a search may visit, four or eight directions, and a step cost that also
 decides whether each step is allowed, so terrain, occupancy and movement rules
 stay with the game. The first consumer is berad-engine, whose NPCs walk tile
-floors; the search began as Ultima V Redux's A*.
+floors; the search began as Ultima V Redux's A*, and Redux now uses this module too.
 
 Canonical import:
 

@@ -321,8 +321,10 @@ ambient curve, including its one-unit inner range and radius-zero background
 convention. The caller resolves world wrapping first. Positional SFX may use a
 different profile; no stereo pan or occlusion is implied.
 
-Redux owns the JSON-to-playback bridge and its `GameAudioManager` facade. The
-game-owned `testdata/berad-audio-redux` fixture independently verifies that bridge.
+The module supplies the JSON-to-playback bridge as `authoring.PlaybackDefinition`.
+Redux owns its `GameAudioManager` facade, routing, music policy and ambient source
+planner. The game-owned `testdata/berad-audio-redux` fixture independently verifies
+that bridge.
 Game integration tests exercise its live adapter and source planner. Neither the
 game facade nor its JSON/media is a dependency or part of this module.
 
